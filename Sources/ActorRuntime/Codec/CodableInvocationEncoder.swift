@@ -134,29 +134,34 @@ public struct CodableInvocationEncoder: DistributedTargetInvocationEncoder {
         return envelope
     }
 
+    // MARK: - Public Accessors
+
+    /// Returns a read-only array of encoded arguments.
+    ///
+    /// This method allows access to the encoded arguments without exposing
+    /// the internal mutable state. Useful for custom transport implementations
+    /// that need to inspect argument data.
+    ///
+    /// - Returns: An array of `Data` representing each encoded argument.
+    /// - Throws: `RuntimeError` if called before `doneRecording()`.
+    public func encodedArguments() throws -> [Data] {
+        guard state == .finished else {
+            throw RuntimeError.invalidState("Must call doneRecording() before accessing arguments")
+        }
+        return arguments
+    }
+
     // MARK: - Private Helpers
 
     /// Extracts the method identifier from a `RemoteCallTarget`.
     ///
-    /// This uses the mangled name representation of the target.
+    /// This uses the identifier property of the target which contains the mangled name.
     ///
     /// - Parameter target: The target to extract the identifier from.
     /// - Returns: A string identifier for the method.
     private func extractIdentifier(from target: RemoteCallTarget) -> String {
-        // Use String(reflecting:) to get the mangled name
-        // Format: "RemoteCallTarget($s10MyModule9MySensor15readTemperatureySdYaKF)"
-        let reflection = String(reflecting: target)
-
-        // Extract the mangled name from the reflection string
-        // We look for content between "RemoteCallTarget(" and ")"
-        if let startIndex = reflection.firstIndex(of: "("),
-           let endIndex = reflection.lastIndex(of: ")") {
-            let mangledName = reflection[reflection.index(after: startIndex)..<endIndex]
-            return String(mangledName)
-        }
-
-        // Fallback: use the full reflection string
-        return reflection
+        // Use the identifier property directly - it contains the mangled name
+        return target.identifier
     }
 }
 

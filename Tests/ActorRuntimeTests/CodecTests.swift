@@ -72,6 +72,40 @@ struct CodecTests {
         }
     }
 
+    @Test("Access encoded arguments after doneRecording")
+    func accessEncodedArguments() throws {
+        var encoder = CodableInvocationEncoder()
+
+        try encoder.recordValue("hello")
+        try encoder.recordValue(42)
+        try encoder.recordValue(3.14)
+        try encoder.doneRecording()
+
+        let arguments = try encoder.encodedArguments()
+
+        #expect(arguments.count == 3)
+
+        // Verify each argument can be decoded
+        let arg1 = try JSONDecoder().decode(String.self, from: arguments[0])
+        let arg2 = try JSONDecoder().decode(Int.self, from: arguments[1])
+        let arg3 = try JSONDecoder().decode(Double.self, from: arguments[2])
+
+        #expect(arg1 == "hello")
+        #expect(arg2 == 42)
+        #expect(arg3 == 3.14)
+    }
+
+    @Test("Cannot access arguments before doneRecording")
+    func cannotAccessArgumentsBeforeDone() throws {
+        var encoder = CodableInvocationEncoder()
+
+        try encoder.recordValue(42)
+
+        #expect(throws: RuntimeError.self) {
+            _ = try encoder.encodedArguments()
+        }
+    }
+
     // MARK: - CodableInvocationDecoder Tests
 
     @Test("Decode single argument")

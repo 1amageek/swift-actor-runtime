@@ -85,18 +85,18 @@ Provide a **transport-agnostic**, **Codable-based** implementation of `Invocatio
 
 ### 2. Method Identification
 
-**Decision**: Use `String(reflecting: target)` to extract mangled name
+**Decision**: Use `target.identifier` to get the mangled name
 
 **Rationale**:
-- Swift's `RemoteCallTarget` contains the mangled name internally
-- `String(reflecting:)` exposes it as a string
-- Stable across Swift versions (part of the ABI)
+- Swift's `RemoteCallTarget` has a public `identifier` property containing the mangled name
+- Direct property access is simpler and more reliable than string parsing
+- Stable across Swift versions (part of the distributed actors API)
 
 **Format Example**:
-```
-RemoteCallTarget(MySensor.readTemperature())
-↓
-"$s10MyModule9MySensor15readTemperatureySdYaKF"
+```swift
+let target: RemoteCallTarget = // ... from Swift runtime
+let identifier = target.identifier
+// identifier = "$s10MyModule9MySensor15readTemperatureySdYaKF"
 ```
 
 ### 3. Encoder State Machine
@@ -274,9 +274,38 @@ public mutating func makeInvocationEnvelope(
 }
 
 private func extractIdentifier(from target: RemoteCallTarget) -> String {
-    // Extract mangled name from RemoteCallTarget
-    String(reflecting: target)
+    // Use the identifier property directly - it contains the mangled name
+    return target.identifier
 }
+```
+
+#### Accessing Encoded Arguments
+
+For advanced use cases where custom transport implementations need to inspect argument data before creating the envelope:
+
+```swift
+public func encodedArguments() throws -> [Data] {
+    guard state == .finished else {
+        throw RuntimeError.invalidState("Must call doneRecording() before accessing arguments")
+    }
+    return arguments
+}
+```
+
+**Use Case Example**:
+```swift
+// In a custom transport that needs to inspect arguments
+var encoder = invocation as! CodableInvocationEncoder
+encoder.recordTarget(target)
+
+// Access encoded arguments to check size or content
+let arguments = try encoder.encodedArguments()
+if arguments.contains(where: { $0.count > maxBLEPacketSize }) {
+    // Handle large arguments differently
+}
+
+// Then create envelope as usual
+let envelope = try encoder.makeInvocationEnvelope(recipientID: actor.id)
 ```
 
 ## Implementation: CodableInvocationDecoder
