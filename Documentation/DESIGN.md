@@ -155,12 +155,14 @@ The runtime only handles:
 - `recipientID: String` - Target actor identifier
 - `senderID: String?` - Source actor (optional, for bidirectional)
 - `target: String` - Method name (mangled Swift identifier)
+- `genericSubstitutions: [String]` - Generic type parameters (mangled type names)
 - `arguments: Data` - Serialized arguments
 - `metadata: Metadata` - Timestamp, version, headers
 
 **Design decisions**:
 - `String` IDs not `UUID` - allows custom ID schemes (UUIDs, names, etc.)
 - `Data` for arguments - transport chooses serialization format
+- `genericSubstitutions` - enables type-safe generic method calls across network
 - `Codable` - works with JSON, Protobuf, MessagePack
 
 ### ResponseEnvelope
@@ -490,6 +492,51 @@ import ActorRuntime
 
 Similar migration, map Protobuf messages to runtime envelopes
 
+## Generic Method Support
+
+The runtime provides full support for distributed methods with generic type parameters and generic distributed actors.
+
+### Generic Methods
+
+Distributed actors can define methods with generic type parameters:
+
+```swift
+distributed actor DataStore {
+    typealias ActorSystem = InMemoryActorSystem
+
+    distributed func store<T: Codable>(_ value: T, key: String) { ... }
+    distributed func fetch<T: Codable>(key: String) -> T? { ... }
+}
+```
+
+### Generic Actors
+
+Distributed actors can themselves be generic:
+
+```swift
+distributed actor GenericContainer<T: Codable & Sendable> {
+    typealias ActorSystem = InMemoryActorSystem
+
+    private var value: T
+
+    distributed func getValue() -> T { return value }
+    distributed func setValue(_ newValue: T) { value = newValue }
+}
+```
+
+### Implementation Details
+
+1. **Type Recording**: The encoder records generic type substitutions via `recordGenericSubstitution<T>(_:)`
+2. **Type Transmission**: Mangled type names are stored in `InvocationEnvelope.genericSubstitutions`
+3. **Type Resolution**: The decoder uses Swift's `_typeByName()` to resolve mangled names back to types
+4. **Type Safety**: Swift's runtime ensures type-safe dispatch using the resolved generic types
+
+### Constraints
+
+- All generic type parameters must conform to `Codable`
+- For generic actor type parameters, types must also conform to `Sendable`
+- Closures cannot be used as distributed method parameters (not `Codable`)
+
 ## Future Enhancements
 
 ### Phase 1: Core (v1.0)
@@ -497,6 +544,8 @@ Similar migration, map Protobuf messages to runtime envelopes
 - ✅ Registries
 - ✅ Errors
 - ✅ Transport protocol
+- ✅ Generic method support
+- ✅ Generic actor support
 
 ### Phase 2: Advanced (v1.1)
 - ⏳ Streaming support (`AsyncStream` results)

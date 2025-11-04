@@ -342,7 +342,12 @@ struct CodecTests {
         #expect(capturedResponse?.callID == "test-call")
 
         if case .failure(let error) = capturedResponse?.result {
-            #expect(error is RuntimeError)
+            // Verify the error is wrapped in RuntimeError.executionFailed
+            if case .executionFailed = error {
+                // Success - error was properly wrapped
+            } else {
+                Issue.record("Expected RuntimeError.executionFailed but got \(error)")
+            }
         } else {
             Issue.record("Expected failure result")
         }

@@ -17,6 +17,8 @@ Transport-agnostic primitives for implementing Swift Distributed Actor systems.
 - ✅ **Universal Envelopes**: `InvocationEnvelope` and `ResponseEnvelope` for method calls
 - ✅ **Actor Registry**: Thread-safe actor instance tracking via `Mutex`
 - ✅ **Codable Codec**: Complete `InvocationEncoder`/`Decoder` implementation for Codable arguments
+- ✅ **Generic Method Support**: Full support for distributed methods with generic type parameters
+- ✅ **Generic Actor Support**: Support for distributed actors with generic constraints
 - ✅ **Swift Runtime Integration**: Uses `executeDistributedTarget` for method dispatch
 - ✅ **Standard Errors**: Serializable `RuntimeError` types
 - ✅ **Transport Protocol**: Common interface for all transport implementations
@@ -123,9 +125,12 @@ Represents a distributed method call:
 let envelope = InvocationEnvelope(
     recipientID: "sensor-1",
     target: "readTemperature",
+    genericSubstitutions: [], // Optional: for generic methods
     arguments: Data()
 )
 ```
+
+For generic methods, the envelope automatically captures type substitutions to ensure type-safe distributed calls.
 
 ### ResponseEnvelope
 

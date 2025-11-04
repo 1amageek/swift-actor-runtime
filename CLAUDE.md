@@ -51,10 +51,11 @@ swift-actor-runtime (this library)
 ### Core Components and Their Relationships
 
 1. **Envelope System** (`Sources/ActorRuntime/Core/Envelope.swift`)
-   - `InvocationEnvelope`: Represents a method call (callID, recipientID, target method, arguments)
+   - `InvocationEnvelope`: Represents a method call (callID, recipientID, target method, genericSubstitutions, arguments)
    - `ResponseEnvelope`: Represents the result (callID, result/error)
    - `InvocationResult`: Enum for success/void/failure
    - These are transport-agnostic; transports serialize them to their native format
+   - `genericSubstitutions: [String]` field stores mangled type names for generic methods
 
 2. **Registry System**
    - `ActorRegistry` (`Sources/ActorRuntime/Core/ActorRegistry.swift`): Maps actor IDs to instances
@@ -65,6 +66,7 @@ swift-actor-runtime (this library)
    - `CodableInvocationDecoder`: Decodes arguments from InvocationEnvelope
    - `CodableResultHandler`: Encodes return values into ResponseEnvelope
    - Enables transport-agnostic method calls with type-safe Codable arguments
+   - **Generic Support**: Full support for generic methods and generic actors via type substitution
 
 4. **Error System** (`Sources/ActorRuntime/Core/RuntimeError.swift`)
    - `RuntimeError`: Codable error types for distributed errors
@@ -163,10 +165,46 @@ The `ActorRegistry` implementation carefully avoids recursive locks when actors 
 - Actors are released **outside** the lock scope
 - This prevents deadlocks if actor `deinit` calls `resignID()` (which acquires the same lock)
 
+## Generic Method Support
+
+The runtime fully supports distributed methods with generic type parameters and generic distributed actors.
+
+### Implementation Details
+
+1. **Type Recording**: `CodableInvocationEncoder.recordGenericSubstitution<T>(_:)` records mangled type names
+2. **Type Transmission**: `InvocationEnvelope.genericSubstitutions: [String]` carries type information
+3. **Type Resolution**: `CodableInvocationDecoder.decodeGenericSubstitutions()` uses `_typeByName()` to resolve types
+4. **Type Safety**: Swift's runtime ensures correct generic method dispatch
+
+### Examples
+
+**Generic Methods**:
+```swift
+distributed actor DataStore {
+    distributed func store<T: Codable>(_ value: T, key: String) { }
+    distributed func fetch<T: Codable>(key: String) -> T? { }
+}
+```
+
+**Generic Actors**:
+```swift
+distributed actor GenericContainer<T: Codable & Sendable> {
+    distributed func getValue() -> T { }
+    distributed func setValue(_ newValue: T) { }
+}
+```
+
+### Constraints
+
+- All generic type parameters must conform to `Codable`
+- For actor type parameters, types must also conform to `Sendable`
+- Closures cannot be distributed method parameters (not `Codable`)
+
 ## Testing Strategy
 
 - Unit tests verify individual components (envelopes, registries, errors)
 - Integration tests use real `DistributedActor` instances with a mock `ActorSystem`
+- Generic actor tests verify type-safe distributed calls with Int, String, and custom structs
 - Tests check thread safety via concurrent access patterns
 - Mock transports used for integration testing without real network
-- All tests in `Tests/ActorRuntimeTests/`
+- All tests in `Tests/ActorRuntimeTests/` (55 tests including generic support)

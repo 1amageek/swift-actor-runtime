@@ -125,6 +125,7 @@ public struct CodableInvocationEncoder: DistributedTargetInvocationEncoder {
             recipientID: recipientID,
             senderID: senderID,
             target: target,
+            genericSubstitutions: genericSubstitutions,
             arguments: argumentsData,
             metadata: .init()
         )

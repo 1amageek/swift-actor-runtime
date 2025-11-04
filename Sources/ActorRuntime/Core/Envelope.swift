@@ -28,6 +28,9 @@ public struct InvocationEnvelope: Codable, Sendable, Hashable {
     /// Method identifier (typically mangled Swift name)
     public let target: String
 
+    /// Generic type substitutions (mangled type names)
+    public let genericSubstitutions: [String]
+
     /// Serialized method arguments
     public let arguments: Data
 
@@ -60,6 +63,7 @@ public struct InvocationEnvelope: Codable, Sendable, Hashable {
         recipientID: String,
         senderID: String? = nil,
         target: String,
+        genericSubstitutions: [String] = [],
         arguments: Data,
         metadata: Metadata = Metadata()
     ) {
@@ -67,6 +71,7 @@ public struct InvocationEnvelope: Codable, Sendable, Hashable {
         self.recipientID = recipientID
         self.senderID = senderID
         self.target = target
+        self.genericSubstitutions = genericSubstitutions
         self.arguments = arguments
         self.metadata = metadata
     }

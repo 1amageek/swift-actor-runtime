@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ActorRegistry` for thread-safe actor instance tracking
 - `CodableInvocationEncoder`/`Decoder` for Codable argument encoding/decoding
 - `CodableResultHandler` for result handling
+- **Generic method support**: Full support for distributed methods with generic type parameters
+- **Generic actor support**: Support for distributed actors with generic constraints
 - `RuntimeError` with standard, serializable error types
 - `DistributedTransport` protocol for transport implementations
 - Full Swift 6 concurrency support with `Sendable` conformance
@@ -20,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Integration with Swift's built-in `executeDistributedTarget` for method dispatch
 - All envelopes fully support Swift's `Codable` protocol
 - Complete working example: InMemoryActorSystem
-- Comprehensive test suite (52 tests including integration tests)
+- Comprehensive test suite (55 tests including generic actor tests)
 - Complete documentation (README, DESIGN, CLAUDE, CODEC)
 - Memory management guidance for strong reference lifecycle
 - Recursive lock prevention in ActorRegistry

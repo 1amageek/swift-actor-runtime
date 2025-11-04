@@ -256,4 +256,24 @@ public distributed actor DataStore {
         return records.removeValue(forKey: id) != nil
     }
 }
+
+/// Example generic distributed actor
+public distributed actor GenericContainer<T: Codable & Sendable> {
+    public typealias ActorSystem = InMemoryActorSystem
+
+    private var value: T
+
+    public init(initialValue: T, actorSystem: ActorSystem) {
+        self.value = initialValue
+        self.actorSystem = actorSystem
+    }
+
+    public distributed func getValue() -> T {
+        return value
+    }
+
+    public distributed func setValue(_ newValue: T) {
+        self.value = newValue
+    }
+}
 #endif

@@ -207,6 +207,7 @@ public struct CodableInvocationEncoder: InvocationEncoder {
     private var state: State = .recording
     private var arguments: [Data] = []
     private var target: RemoteCallTarget?
+    private var genericSubstitutions: [String] = []
     private var returnTypeInfo: String?
     private var errorTypeInfo: String?
 
@@ -226,6 +227,18 @@ public mutating func recordArgument<Value: Codable>(_ argument: Value) throws {
 
     let data = try JSONEncoder().encode(argument)
     arguments.append(data)
+}
+```
+
+#### Recording Generic Substitutions
+
+```swift
+public mutating func recordGenericSubstitution<T>(_ type: T.Type) throws {
+    guard state == .recording else {
+        throw RuntimeError.invalidState("Cannot record generic substitution after encoding")
+    }
+    // Store mangled type name for transmission
+    genericSubstitutions.append(String(reflecting: type))
 }
 ```
 
@@ -251,6 +264,7 @@ public mutating func makeInvocationEnvelope(
         recipientID: recipientID,
         senderID: senderID,
         target: extractIdentifier(from: target),
+        genericSubstitutions: genericSubstitutions,  // Include generic type info
         arguments: argumentsData,
         metadata: .init()
     )
@@ -272,11 +286,13 @@ private func extractIdentifier(from target: RemoteCallTarget) -> String {
 ```swift
 public struct CodableInvocationDecoder: InvocationDecoder {
     private var arguments: [Data]
+    private var genericSubstitutions: [String]
     private var currentIndex: Int = 0
 
     public init(envelope: InvocationEnvelope) throws {
         // Decode the array of arguments
         self.arguments = try JSONDecoder().decode([Data].self, from: envelope.arguments)
+        self.genericSubstitutions = envelope.genericSubstitutions
     }
 
     // ... implementation
@@ -284,6 +300,24 @@ public struct CodableInvocationDecoder: InvocationDecoder {
 ```
 
 ### Key Methods
+
+#### Decoding Generic Substitutions
+
+```swift
+public mutating func decodeGenericSubstitutions() throws -> [Any.Type] {
+    // Convert mangled type names back to Type objects using Swift's internal _typeByName
+    return try genericSubstitutions.compactMap { mangledName in
+        guard let type = _typeByName(mangledName) else {
+            throw RuntimeError.serializationFailed(
+                "Failed to resolve generic type from mangled name: \(mangledName)"
+            )
+        }
+        return type
+    }
+}
+```
+
+**Note**: This uses Swift's internal `_typeByName()` function to resolve mangled type names. This is the same approach used by Apple's swift-distributed-actors.
 
 #### Decoding Arguments
 
@@ -448,12 +482,58 @@ Per call:
 2. **Binary Format**: Replace JSON with MessagePack or Protobuf
 3. **Streaming**: For large arguments, stream instead of buffering
 
+## Generic Method Support
+
+The Codec system fully supports distributed methods with generic type parameters:
+
+### Generic Methods
+
+```swift
+distributed actor DataStore {
+    typealias ActorSystem = InMemoryActorSystem
+
+    distributed func store<T: Codable>(_ value: T, key: String) { ... }
+    distributed func fetch<T: Codable>(key: String) -> T? { ... }
+}
+```
+
+### Generic Actors
+
+```swift
+distributed actor GenericContainer<T: Codable & Sendable> {
+    typealias ActorSystem = InMemoryActorSystem
+
+    private var value: T
+
+    distributed func getValue() -> T { return value }
+    distributed func setValue(_ newValue: T) { value = newValue }
+}
+
+// Usage
+let container = GenericContainer(initialValue: 42, actorSystem: system)
+let value = try await container.getValue() // Type-safe: returns Int
+```
+
+### How It Works
+
+1. **Encoder** records generic type substitutions using `recordGenericSubstitution<T>(_:)`
+2. **InvocationEnvelope** transmits mangled type names as `[String]`
+3. **Decoder** resolves type names back to `Any.Type` using `_typeByName()`
+4. **Swift Runtime** uses resolved types to correctly dispatch generic methods
+
+### Limitations
+
+- **Codable Constraint**: All generic parameters must conform to `Codable` (and `Sendable` for actor type parameters)
+- **No Closures**: Closures cannot be distributed method parameters because they don't conform to `Codable`
+
 ## Future Enhancements
 
 ### Phase 1 (v0.2.0): Core Codec
 - ✅ CodableInvocationEncoder
 - ✅ CodableInvocationDecoder
 - ✅ RemoteCallTarget helpers
+- ✅ Generic method support
+- ✅ Generic actor support
 
 ### Phase 2 (v0.3.0): Advanced Features
 - Binary codec (MessagePack)

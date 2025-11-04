@@ -193,6 +193,26 @@ distributed actor DataStore {
     }
 }
 
+// Generic distributed actor
+distributed actor GenericContainer<T: Codable & Sendable> {
+    typealias ActorSystem = InMemoryActorSystem
+
+    private var value: T
+
+    init(initialValue: T, actorSystem: ActorSystem) {
+        self.value = initialValue
+        self.actorSystem = actorSystem
+    }
+
+    distributed func getValue() -> T {
+        return value
+    }
+
+    distributed func setValue(_ newValue: T) {
+        self.value = newValue
+    }
+}
+
 @Suite("InMemory Transport Integration Tests")
 struct InMemoryTransportTests {
 
@@ -315,6 +335,53 @@ struct InMemoryTransportTests {
         let resolved = try system.resolve(id: "non-existent", as: Counter.self)
         #expect(resolved == nil)
     }
+
+    @Test("Generic container with Int")
+    func genericContainerWithInt() async throws {
+        let system = InMemoryActorSystem()
+        let container = GenericContainer(initialValue: 42, actorSystem: system)
+
+        let value = try await container.getValue()
+        #expect(value == 42)
+
+        try await container.setValue(100)
+        let newValue = try await container.getValue()
+        #expect(newValue == 100)
+    }
+
+    @Test("Generic container with String")
+    func genericContainerWithString() async throws {
+        let system = InMemoryActorSystem()
+        let container = GenericContainer(initialValue: "hello", actorSystem: system)
+
+        let value = try await container.getValue()
+        #expect(value == "hello")
+
+        try await container.setValue("world")
+        let newValue = try await container.getValue()
+        #expect(newValue == "world")
+    }
+
+    @Test("Generic container with custom struct")
+    func genericContainerWithCustomStruct() async throws {
+        struct Person: Codable, Sendable, Equatable {
+            let name: String
+            let age: Int
+        }
+
+        let system = InMemoryActorSystem()
+        let person = Person(name: "Alice", age: 30)
+        let container = GenericContainer(initialValue: person, actorSystem: system)
+
+        let value = try await container.getValue()
+        #expect(value == person)
+
+        let newPerson = Person(name: "Bob", age: 25)
+        try await container.setValue(newPerson)
+        let newValue = try await container.getValue()
+        #expect(newValue == newPerson)
+    }
+
 }
 
 #endif

@@ -27,6 +27,7 @@ public struct CodableInvocationDecoder: DistributedTargetInvocationDecoder {
     public typealias SerializationRequirement = Codable
 
     private var arguments: [Data]
+    private var genericSubstitutions: [String]
     private var currentIndex: Int = 0
 
     /// Creates a decoder from an invocation envelope.
@@ -36,14 +37,22 @@ public struct CodableInvocationDecoder: DistributedTargetInvocationDecoder {
     public init(envelope: InvocationEnvelope) throws {
         // Decode the array of Data blobs
         self.arguments = try JSONDecoder().decode([Data].self, from: envelope.arguments)
+        self.genericSubstitutions = envelope.genericSubstitutions
     }
 
     // MARK: - DistributedTargetInvocationDecoder
 
     public mutating func decodeGenericSubstitutions() throws -> [Any.Type] {
-        // Generic substitutions not currently stored in envelope
-        // Return empty array (no generic parameters)
-        return []
+        // Convert mangled type names back to Type objects
+        return try genericSubstitutions.compactMap { mangledName in
+            // Use Swift's internal _typeByName function to resolve mangled names
+            guard let type = _typeByName(mangledName) else {
+                throw RuntimeError.serializationFailed(
+                    "Failed to resolve generic type from mangled name: \(mangledName)"
+                )
+            }
+            return type
+        }
     }
 
     public mutating func decodeNextArgument<Argument: Codable>() throws -> Argument {
