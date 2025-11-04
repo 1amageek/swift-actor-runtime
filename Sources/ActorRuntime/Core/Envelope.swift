@@ -146,6 +146,89 @@ public struct ResponseEnvelope: Codable, Sendable, Hashable {
     }
 }
 
+// MARK: - ResponseEnvelope Convenience Methods
+
+extension ResponseEnvelope {
+    /// Returns a new ResponseEnvelope with the specified execution time.
+    ///
+    /// This is useful when you need to measure and record the execution time
+    /// of a distributed method call after the initial envelope is created.
+    ///
+    /// ## Usage
+    ///
+    /// ```swift
+    /// let startTime = Date()
+    /// // ... execute distributed method ...
+    /// let executionTime = Date().timeIntervalSince(startTime)
+    /// let enrichedResponse = response.withExecutionTime(executionTime)
+    /// ```
+    ///
+    /// - Parameter time: The execution time in seconds.
+    /// - Returns: A new ResponseEnvelope with updated metadata.
+    public func withExecutionTime(_ time: TimeInterval) -> ResponseEnvelope {
+        return ResponseEnvelope(
+            callID: callID,
+            result: result,
+            metadata: Metadata(
+                timestamp: metadata.timestamp,
+                executionTime: time,
+                headers: metadata.headers
+            )
+        )
+    }
+
+    /// Returns a new ResponseEnvelope with additional headers merged.
+    ///
+    /// This is useful for adding distributed tracing information, request IDs,
+    /// or other contextual metadata to the response.
+    ///
+    /// ## Usage
+    ///
+    /// ```swift
+    /// let enrichedResponse = response.withHeaders([
+    ///     "trace-id": "abc123",
+    ///     "span-id": "def456"
+    /// ])
+    /// ```
+    ///
+    /// - Parameter additionalHeaders: Headers to add or update. If a header key
+    ///   already exists, the new value will replace the old value.
+    /// - Returns: A new ResponseEnvelope with merged headers.
+    public func withHeaders(_ additionalHeaders: [String: String]) -> ResponseEnvelope {
+        var headers = metadata.headers
+        headers.merge(additionalHeaders) { _, new in new }
+
+        return ResponseEnvelope(
+            callID: callID,
+            result: result,
+            metadata: Metadata(
+                timestamp: metadata.timestamp,
+                executionTime: metadata.executionTime,
+                headers: headers
+            )
+        )
+    }
+
+    /// Returns a new ResponseEnvelope with a single header added or updated.
+    ///
+    /// This is a convenience method for adding a single header without creating
+    /// a dictionary.
+    ///
+    /// ## Usage
+    ///
+    /// ```swift
+    /// let enrichedResponse = response.withHeader("method", value: "readTemperature")
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - key: The header key.
+    ///   - value: The header value.
+    /// - Returns: A new ResponseEnvelope with the updated header.
+    public func withHeader(_ key: String, value: String) -> ResponseEnvelope {
+        return withHeaders([key: value])
+    }
+}
+
 /// Result of a remote invocation
 ///
 /// Distinguishes between successful executions (with or without return value)

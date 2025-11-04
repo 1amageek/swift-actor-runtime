@@ -193,4 +193,96 @@ struct EnvelopeTests {
         let envelopeSet: Set<InvocationEnvelope> = [envelope1, envelope2, envelope3]
         #expect(envelopeSet.count == 2)
     }
+
+    @Test("ResponseEnvelope withExecutionTime helper")
+    func testResponseEnvelopeWithExecutionTime() throws {
+        let original = ResponseEnvelope(
+            callID: "test-call",
+            result: .success(Data([1, 2, 3])),
+            metadata: .init(
+                timestamp: Date(timeIntervalSince1970: 1000),
+                headers: ["key": "value"]
+            )
+        )
+
+        let enriched = original.withExecutionTime(0.5)
+
+        #expect(enriched.callID == original.callID)
+        #expect(enriched.result == original.result)
+        #expect(enriched.metadata.executionTime == 0.5)
+        #expect(enriched.metadata.timestamp == original.metadata.timestamp)
+        #expect(enriched.metadata.headers == original.metadata.headers)
+    }
+
+    @Test("ResponseEnvelope withHeaders helper")
+    func testResponseEnvelopeWithHeaders() throws {
+        let original = ResponseEnvelope(
+            callID: "test-call",
+            result: .void,
+            metadata: .init(headers: ["existing": "value"])
+        )
+
+        let enriched = original.withHeaders([
+            "trace-id": "abc123",
+            "span-id": "def456"
+        ])
+
+        #expect(enriched.callID == original.callID)
+        #expect(enriched.result == original.result)
+        #expect(enriched.metadata.headers.count == 3)
+        #expect(enriched.metadata.headers["existing"] == "value")
+        #expect(enriched.metadata.headers["trace-id"] == "abc123")
+        #expect(enriched.metadata.headers["span-id"] == "def456")
+    }
+
+    @Test("ResponseEnvelope withHeaders merges and overwrites")
+    func testResponseEnvelopeWithHeadersMerge() throws {
+        let original = ResponseEnvelope(
+            callID: "test-call",
+            result: .void,
+            metadata: .init(headers: ["key1": "old", "key2": "value2"])
+        )
+
+        let enriched = original.withHeaders(["key1": "new", "key3": "value3"])
+
+        #expect(enriched.metadata.headers.count == 3)
+        #expect(enriched.metadata.headers["key1"] == "new") // Overwritten
+        #expect(enriched.metadata.headers["key2"] == "value2") // Preserved
+        #expect(enriched.metadata.headers["key3"] == "value3") // Added
+    }
+
+    @Test("ResponseEnvelope withHeader helper")
+    func testResponseEnvelopeWithHeader() throws {
+        let original = ResponseEnvelope(
+            callID: "test-call",
+            result: .void,
+            metadata: .init(headers: ["existing": "value"])
+        )
+
+        let enriched = original.withHeader("method", value: "readTemperature")
+
+        #expect(enriched.metadata.headers.count == 2)
+        #expect(enriched.metadata.headers["existing"] == "value")
+        #expect(enriched.metadata.headers["method"] == "readTemperature")
+    }
+
+    @Test("ResponseEnvelope chaining helpers")
+    func testResponseEnvelopeChainingHelpers() throws {
+        let original = ResponseEnvelope(
+            callID: "test-call",
+            result: .success(Data([42]))
+        )
+
+        let enriched = original
+            .withExecutionTime(0.5)
+            .withHeader("trace-id", value: "abc123")
+            .withHeaders(["span-id": "def456", "user-id": "user1"])
+
+        #expect(enriched.callID == original.callID)
+        #expect(enriched.result == original.result)
+        #expect(enriched.metadata.executionTime == 0.5)
+        #expect(enriched.metadata.headers["trace-id"] == "abc123")
+        #expect(enriched.metadata.headers["span-id"] == "def456")
+        #expect(enriched.metadata.headers["user-id"] == "user1")
+    }
 }

@@ -386,4 +386,102 @@ struct CodecTests {
             Issue.record("Expected failure result")
         }
     }
+
+    // MARK: - Improved Error Message Tests
+
+    @Test("Decoder error includes method name when no arguments available")
+    func decoderErrorIncludesMethodNameForNoArguments() throws {
+        let arguments: [Data] = []
+        let argumentsData = try JSONEncoder().encode(arguments)
+
+        let envelope = InvocationEnvelope(
+            recipientID: "test-actor",
+            senderID: nil,
+            target: "testMethod",
+            arguments: argumentsData,
+            metadata: .init()
+        )
+
+        var decoder = try CodableInvocationDecoder(envelope: envelope)
+
+        do {
+            let _: Int = try decoder.decodeNextArgument()
+            Issue.record("Expected error to be thrown")
+        } catch let error as RuntimeError {
+            if case .serializationFailed(let message) = error {
+                #expect(message.contains("testMethod"))
+                #expect(message.contains("index 0"))
+                #expect(message.contains("0 arguments available"))
+            } else {
+                Issue.record("Expected serializationFailed error but got \(error)")
+            }
+        }
+    }
+
+    @Test("Decoder error includes method name and type on type mismatch")
+    func decoderErrorIncludesMethodNameAndTypeOnMismatch() throws {
+        let arguments = [try JSONEncoder().encode("not a number")]
+        let argumentsData = try JSONEncoder().encode(arguments)
+
+        let envelope = InvocationEnvelope(
+            recipientID: "test-actor",
+            senderID: nil,
+            target: "readTemperature",
+            arguments: argumentsData,
+            metadata: .init()
+        )
+
+        var decoder = try CodableInvocationDecoder(envelope: envelope)
+
+        do {
+            let _: Int = try decoder.decodeNextArgument()
+            Issue.record("Expected error to be thrown")
+        } catch let error as RuntimeError {
+            if case .serializationFailed(let message) = error {
+                #expect(message.contains("readTemperature"))
+                #expect(message.contains("Int"))
+                #expect(message.contains("index 0"))
+            } else {
+                Issue.record("Expected serializationFailed error but got \(error)")
+            }
+        }
+    }
+
+    @Test("Decoder error message shows correct index for multiple arguments")
+    func decoderErrorShowsCorrectIndexForMultipleArguments() throws {
+        let arguments = [
+            try JSONEncoder().encode("first"),
+            try JSONEncoder().encode("second"),
+            try JSONEncoder().encode("third")
+        ]
+        let argumentsData = try JSONEncoder().encode(arguments)
+
+        let envelope = InvocationEnvelope(
+            recipientID: "test-actor",
+            senderID: nil,
+            target: "multiArgMethod",
+            arguments: argumentsData,
+            metadata: .init()
+        )
+
+        var decoder = try CodableInvocationDecoder(envelope: envelope)
+
+        // Decode first two successfully
+        let _: String = try decoder.decodeNextArgument()
+        let _: String = try decoder.decodeNextArgument()
+
+        // Try to decode third with wrong type
+        do {
+            let _: Int = try decoder.decodeNextArgument()
+            Issue.record("Expected error to be thrown")
+        } catch let error as RuntimeError {
+            if case .serializationFailed(let message) = error {
+                #expect(message.contains("multiArgMethod"))
+                #expect(message.contains("index 2"))
+                #expect(message.contains("Int"))
+            } else {
+                Issue.record("Expected serializationFailed error but got \(error)")
+            }
+        }
+    }
 }

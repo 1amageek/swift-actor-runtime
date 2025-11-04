@@ -29,6 +29,7 @@ public struct CodableInvocationDecoder: DistributedTargetInvocationDecoder {
     private var arguments: [Data]
     private var genericSubstitutions: [String]
     private var currentIndex: Int = 0
+    private let target: String  // Store for better error messages
 
     /// Creates a decoder from an invocation envelope.
     ///
@@ -38,6 +39,7 @@ public struct CodableInvocationDecoder: DistributedTargetInvocationDecoder {
         // Decode the array of Data blobs
         self.arguments = try JSONDecoder().decode([Data].self, from: envelope.arguments)
         self.genericSubstitutions = envelope.genericSubstitutions
+        self.target = envelope.target
     }
 
     // MARK: - DistributedTargetInvocationDecoder
@@ -58,7 +60,7 @@ public struct CodableInvocationDecoder: DistributedTargetInvocationDecoder {
     public mutating func decodeNextArgument<Argument: Codable>() throws -> Argument {
         guard currentIndex < arguments.count else {
             throw RuntimeError.serializationFailed(
-                "Attempted to decode argument at index \(currentIndex), but only \(arguments.count) arguments available"
+                "Attempted to decode argument at index \(currentIndex), but only \(arguments.count) arguments available for method '\(target)'"
             )
         }
 
@@ -69,7 +71,7 @@ public struct CodableInvocationDecoder: DistributedTargetInvocationDecoder {
             return try JSONDecoder().decode(Argument.self, from: data)
         } catch {
             throw RuntimeError.serializationFailed(
-                "Failed to decode argument at index \(currentIndex - 1): \(error)"
+                "Failed to decode argument at index \(currentIndex - 1) as \(Argument.self) for method '\(target)': \(error.localizedDescription)"
             )
         }
     }
