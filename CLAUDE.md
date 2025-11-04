@@ -36,6 +36,29 @@ swift test --filter ActorRegistryIntegrationTests
 swift package clean
 ```
 
+## Release Process
+
+### Version Tagging
+
+**IMPORTANT**: This project uses version tags **WITHOUT** the `v` prefix.
+
+- ✅ Correct: `0.1.0`, `0.2.0`, `1.0.0`
+- ❌ Incorrect: `v0.1.0`, `v0.2.0`, `v1.0.0`
+
+### Creating a Release
+
+```bash
+# Create an annotated tag
+git tag -a 0.1.0 -m "Release 0.1.0"
+
+# Push to remote
+git push origin 0.1.0
+
+# To delete a tag if needed
+git tag -d 0.1.0
+git push origin :refs/tags/0.1.0
+```
+
 ## Architecture Overview
 
 The runtime sits between user-defined distributed actors and transport implementations:
