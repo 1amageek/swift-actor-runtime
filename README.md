@@ -1,5 +1,9 @@
 # Swift Actor Runtime
 
+[![Test](https://github.com/1amageek/swift-actor-runtime/actions/workflows/test.yml/badge.svg)](https://github.com/1amageek/swift-actor-runtime/actions/workflows/test.yml)
+[![Swift 6.2+](https://img.shields.io/badge/Swift-6.2+-orange.svg)](https://swift.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Transport-agnostic primitives for implementing Swift Distributed Actor systems.
 
 ## Overview
@@ -25,7 +29,7 @@ Transport-agnostic primitives for implementing Swift Distributed Actor systems.
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/1amageek/swift-actor-runtime", from: "1.0.0")
+    .package(url: "https://github.com/1amageek/swift-actor-runtime", from: "0.1.0")
 ]
 ```
 
