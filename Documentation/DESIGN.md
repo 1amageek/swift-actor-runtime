@@ -4,18 +4,64 @@
 
 Swift's Distributed Actor system provides excellent abstractions for writing distributed code, but:
 
-1. **No public reflection APIs**: `executeDistributedTarget` delegates to internal runtime
-2. **Transport coupling**: Each implementation re-invents envelopes, registries, errors
-3. **Code duplication**: Common patterns repeated across projects
-4. **Ecosystem fragmentation**: Hard to switch transports or mix them
+1. **Transport coupling**: Each implementation re-invents envelopes, registries, errors
+2. **Code duplication**: Common patterns repeated across projects
+3. **Ecosystem fragmentation**: Hard to switch transports or mix them
+4. **Lack of shared primitives**: No standard types for transport-agnostic RPC
 
 ## Solution
 
 Extract transport-agnostic primitives into a shared runtime library that:
 - Provides standard envelopes for RPC
-- Manages actor instance and method registries
+- Manages actor instance registries
 - Defines common error types
 - Establishes transport protocol interface
+- Leverages Swift's built-in `executeDistributedTarget` for method dispatch
+
+## Understanding Swift's Distributed Actor System
+
+### How `executeDistributedTarget` Works
+
+Swift's distributed actor system provides `executeDistributedTarget` as part of the `DistributedActorSystem` protocol. This method is **not** a required implementation - it has a default implementation provided by the Swift runtime.
+
+**Key Point**: You do **not** need to manually register methods. The Swift compiler and runtime handle method dispatch automatically.
+
+### Correct Usage Pattern
+
+```swift
+public func remoteCall<Act, Err, Res>(
+    on actor: Act,
+    target: RemoteCallTarget,
+    invocation: inout InvocationEncoder,
+    throwing errorType: Err.Type,
+    returning returnType: Res.Type
+) async throws -> Res {
+    // 1. Serialize invocation to InvocationEnvelope
+    let envelope = InvocationEnvelope(...)
+
+    // 2. Send over transport (BLE, gRPC, etc.)
+    let response = try await transport.send(envelope)
+
+    // 3. Create decoder from response
+    var decoder = makeDecoder(from: response)
+
+    // 4. Let Swift runtime handle method dispatch
+    try await executeDistributedTarget(
+        on: actor,
+        target: target,
+        invocationDecoder: &decoder,
+        handler: resultHandler
+    )
+}
+```
+
+The `executeDistributedTarget` method:
+- Looks up the distributed function based on the `RemoteCallTarget`
+- Decodes arguments efficiently from the `InvocationDecoder`
+- Performs the call on the target method
+- Handles results via the `ResultHandler`
+
+**No manual method registration required!**
 
 ## Design Principles
 
@@ -83,7 +129,6 @@ The runtime only handles:
 │  ┌─────────────────────────────────────┐   │
 │  │  Registry System                     │   │
 │  │  - ActorRegistry (instance lookup)   │   │
-│  │  - MethodRegistry (execution)        │   │
 │  └─────────────────────────────────────┘   │
 │                                              │
 │  ┌─────────────────────────────────────┐   │
@@ -94,12 +139,7 @@ The runtime only handles:
 │  ┌─────────────────────────────────────┐   │
 │  │  Transport Protocol                  │   │
 │  │  - DistributedTransport interface    │   │
-│  └─────────────────────────────────────┘   │
-│                                              │
-│  ┌─────────────────────────────────────┐   │
-│  │  Serialization System                │   │
-│  │  - SerializationSystem protocol      │   │
-│  │  - JSONSerializationSystem           │   │
+│  │  - Codable envelopes                 │   │
 │  └─────────────────────────────────────┘   │
 └──────────────────────────────────────────────┘
 ```
@@ -162,40 +202,6 @@ final class ActorRegistry: Sendable {
 - Need synchronous access
 - Mutex provides Sendable without `@unchecked`
 
-### MethodRegistry
-
-**Purpose**: Execute methods by name without reflection
-
-**Implementation**:
-```swift
-final class MethodRegistry: Sendable {
-    typealias MethodHandler = @Sendable (Data) async throws -> Data
-
-    private struct State {
-        var methods: [String: MethodHandler] = [:]
-    }
-    private let mutex = Mutex(State())
-}
-```
-
-**Why needed**: Swift doesn't expose APIs to execute distributed methods by name
-
-**Registration pattern**:
-```swift
-// Actor registers its methods
-distributed actor Sensor {
-    distributed func read() async -> Double { 22.5 }
-
-    func registerMethods(with registry: MethodRegistry) async {
-        await registry.register("read") { [weak self] _ in
-            guard let self = self else { throw RuntimeError.actorDeallocated("sensor") }
-            let result = try await self.read()
-            return try JSONEncoder().encode(result)
-        }
-    }
-}
-```
-
 ### RuntimeError
 
 **Purpose**: Standard, serializable error types
@@ -203,7 +209,7 @@ distributed actor Sensor {
 **Cases**:
 - `actorNotFound(String)` - Target actor not in registry
 - `actorDeallocated(String)` - Actor instance was deallocated
-- `methodNotFound(String)` - Method not registered
+- `methodNotFound(String)` - Distributed method not found (rare, usually a version mismatch)
 - `executionFailed(String, underlying: String)` - Method threw
 - `serializationFailed(String)` - Encode/decode error
 - `transportFailed(String)` - Network error
@@ -235,8 +241,10 @@ protocol DistributedTransport: Sendable {
 ```
 
 **Separation of concerns**:
-- Transport: connectivity, discovery, security
+- Transport: connectivity, discovery, security, serialization
 - Runtime: invocation, routing, errors
+
+**Serialization**: All envelopes conform to Swift's `Codable` protocol. Transport implementations can use any encoder/decoder (JSONEncoder, Protocol Buffers, MessagePack, etc.) to serialize envelopes for transmission.
 
 ## Data Flow
 
@@ -261,13 +269,16 @@ protocol DistributedTransport: Sendable {
 5. Runtime: Find actor via ActorRegistry
    let actor = actorRegistry.find(id: "sensor-1")
    ↓
-6. Runtime: Find method via MethodRegistry
-   let methodRegistry = methodRegistries["sensor-1"]
+6. Runtime: Execute method via executeDistributedTarget
+   var decoder = makeDecoder(from: envelope)
+   let result = try await executeDistributedTarget(
+       on: actor,
+       target: envelope.target,
+       invocationDecoder: &decoder,
+       handler: resultHandler
+   )
    ↓
-7. Runtime: Execute method
-   let resultData = try await methodRegistry.execute("readTemperature", args: Data())
-   ↓
-8. Runtime: Create ResponseEnvelope
+7. Runtime: Create ResponseEnvelope
    {
      callID: "uuid-1234",
      result: .success(resultData)
@@ -317,38 +328,35 @@ private let mutex = Mutex(State())
 
 ## Serialization Strategy
 
-### Pluggable System
+All envelopes (`InvocationEnvelope`, `ResponseEnvelope`, `RuntimeError`) conform to Swift's `Codable` protocol. Transport implementations choose their own serialization format:
 
+### Common Formats:
+
+**JSON** (via `JSONEncoder`/`JSONDecoder`):
+- ✅ Human-readable (debugging)
+- ✅ Universal support
+- ✅ No dependencies
+- ❌ Larger payload
+- ❌ Slower than binary
+
+**Protocol Buffers** (via SwiftProtobuf):
+- ✅ Compact binary
+- ✅ Schema versioning
+- ✅ Fast
+- ❌ Requires protobuf dependency
+- ❌ Not human-readable
+
+**MessagePack** (via third-party libraries):
+- ✅ Compact binary
+- ✅ Simple format
+- ❌ Additional dependency
+
+The runtime library itself is serialization-agnostic. Transport implementations simply call:
 ```swift
-protocol SerializationSystem: Sendable {
-    func encode<T: Encodable>(_ value: T) throws -> Data
-    func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T
-}
+let data = try JSONEncoder().encode(envelope)
+// or
+let data = try envelope.serializedData() // Protocol Buffers
 ```
-
-### Default: JSON
-
-**Pros**:
-- Human-readable (debugging)
-- Universal support
-- No dependencies
-
-**Cons**:
-- Larger payload
-- Slower than binary
-
-### Alternative: Protocol Buffers
-
-**Pros**:
-- Compact binary
-- Schema versioning
-- Fast
-
-**Cons**:
-- Requires protobuf dependency
-- Not human-readable
-
-**Choice**: JSON default, Protobuf optional
 
 ## Performance Considerations
 
@@ -362,10 +370,8 @@ protocol SerializationSystem: Sendable {
 
 Per actor:
 - ActorRegistry entry: ~32 bytes (pointer + UUID)
-- MethodRegistry instance: ~100 bytes
-- Per method: ~100 bytes (closure)
 
-Typical peripheral (1 actor, 5 methods): ~600 bytes overhead
+Typical peripheral (1 actor, 5 methods): ~32 bytes overhead
 
 ### Scalability
 
@@ -380,7 +386,7 @@ Typical peripheral (1 actor, 5 methods): ~600 bytes overhead
 ```
 Peripheral throws error
    ↓
-MethodRegistry catches, wraps in RuntimeError
+executeDistributedTarget catches, wraps in RuntimeError
    ↓
 ResponseEnvelope.result = .failure(error)
    ↓
@@ -395,7 +401,7 @@ Central throws to caller
 
 **User errors** (expected):
 - `actorNotFound` - Client requested non-existent actor
-- `methodNotFound` - Actor doesn't have method
+- `methodNotFound` - Distributed method doesn't exist (version mismatch)
 - `executionFailed` - Method logic threw
 
 **System errors** (unexpected):
@@ -477,7 +483,8 @@ import ActorRuntime
 1. Add dependency on swift-actor-runtime
 2. Remove duplicate types from BleuTypes.swift
 3. Update imports
-4. Use ActorRegistry/MethodRegistry
+4. Use ActorRegistry for instance tracking
+5. Use executeDistributedTarget for method dispatch
 
 ### From Actor-Edge
 

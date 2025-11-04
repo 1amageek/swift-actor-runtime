@@ -28,7 +28,7 @@ swift test --filter <TestName>
 For example:
 ```bash
 swift test --filter ActorRegistrySimpleTests
-swift test --filter MethodRegistryTests
+swift test --filter ActorRegistryIntegrationTests
 ```
 
 ### Clean build artifacts
@@ -58,26 +58,26 @@ swift-actor-runtime (this library)
 
 2. **Registry System**
    - `ActorRegistry` (`Sources/ActorRuntime/Core/ActorRegistry.swift`): Maps actor IDs to instances
-   - `MethodRegistry` (`Sources/ActorRuntime/Core/MethodRegistry.swift`): Maps method names to executable closures
-   - Both use `Synchronization.Mutex` for thread-safe access (not `@unchecked Sendable` or `NSLock`)
+   - Uses `Synchronization.Mutex` for thread-safe access (not `@unchecked Sendable` or `NSLock`)
 
-3. **Error System** (`Sources/ActorRuntime/Core/RuntimeError.swift`)
+3. **Codec System** (`Sources/ActorRuntime/Codec/`)
+   - `CodableInvocationEncoder`: Records distributed method arguments as Codable Data
+   - `CodableInvocationDecoder`: Decodes arguments from InvocationEnvelope
+   - `CodableResultHandler`: Encodes return values into ResponseEnvelope
+   - Enables transport-agnostic method calls with type-safe Codable arguments
+
+4. **Error System** (`Sources/ActorRuntime/Core/RuntimeError.swift`)
    - `RuntimeError`: Codable error types for distributed errors
    - Cases: actorNotFound, methodNotFound, executionFailed, serializationFailed, timeout, etc.
 
-4. **Transport Protocol** (`Sources/ActorRuntime/Transport/TransportProtocol.swift`)
+5. **Transport Protocol** (`Sources/ActorRuntime/Transport/TransportProtocol.swift`)
    - `DistributedTransport`: Interface all transport implementations must conform to
    - Methods: `sendInvocation()`, `incomingInvocations`, `sendResponse()`, `close()`
-
-5. **Serialization System** (`Sources/ActorRuntime/Serialization/SerializationSystem.swift`)
-   - `SerializationSystem`: Protocol for pluggable serialization
-   - `JSONSerializationSystem`: Default JSON implementation
-   - Transports can provide custom implementations (Protobuf, MessagePack, etc.)
+   - All envelopes are `Codable` and can be serialized using standard Swift encoders/decoders
 
 ### Key Design Decisions
 
-- **No Reflection**: Swift doesn't expose APIs to execute distributed methods by name, so `MethodRegistry` provides manual registration
-- **Type Erasure**: Methods registered as `(Data) async throws -> Data`; type safety via `Codable` at boundaries
+- **Use executeDistributedTarget**: Swift provides `executeDistributedTarget` for method dispatch - no manual registration needed
 - **Thread Safety via Mutex**: All registries use `Synchronization.Mutex` (Swift 6.0+) for Sendable conformance without `@unchecked`
 - **String IDs not UUIDs**: Actor/call identifiers are strings to allow custom ID schemes
 - **Zero Dependencies**: Pure Swift standard library for maximum compatibility
@@ -90,8 +90,8 @@ swift-actor-runtime (this library)
 3. Transport serializes and sends over wire
 4. Server transport deserializes to `InvocationEnvelope`
 5. Runtime finds actor via `ActorRegistry.find(id:)`
-6. Runtime finds method via `MethodRegistry.execute(_:arguments:)`
-7. Runtime executes method and captures result
+6. **Swift runtime executes method via `executeDistributedTarget`** (automatic dispatch)
+7. Method executes and returns result
 8. Runtime creates `ResponseEnvelope` with result
 
 ### Server → Client (Response):
@@ -101,10 +101,19 @@ swift-actor-runtime (this library)
 12. Transport matches callID to pending call
 13. Transport resumes continuation with result
 
+### Key Point: executeDistributedTarget
+The Swift runtime's `executeDistributedTarget` handles:
+- Looking up the distributed function from `RemoteCallTarget`
+- Decoding arguments from `InvocationDecoder`
+- Dispatching to the actual method implementation
+- Handling results via `ResultHandler`
+
+**No manual method registration needed!**
+
 ## Thread Safety Model
 
-- `ActorRegistry` and `MethodRegistry` are `final class` with `Mutex<State>`
-- Not `actor` types because `DistributedActorSystem` requires synchronous access
+- `ActorRegistry` is a `final class` with `Mutex<State>`
+- Not an `actor` type because `DistributedActorSystem` requires synchronous access
 - Lock granularity is per-registry instance to minimize contention
 - All public APIs are thread-safe and can be called from any context
 

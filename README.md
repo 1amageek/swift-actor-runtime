@@ -16,10 +16,10 @@ Transport-agnostic primitives for implementing Swift Distributed Actor systems.
 
 - ✅ **Universal Envelopes**: `InvocationEnvelope` and `ResponseEnvelope` for method calls
 - ✅ **Actor Registry**: Thread-safe actor instance tracking via `Mutex`
-- ✅ **Method Registry**: Execute distributed methods without reflection
+- ✅ **Codable Codec**: Complete `InvocationEncoder`/`Decoder` implementation for Codable arguments
+- ✅ **Swift Runtime Integration**: Uses `executeDistributedTarget` for method dispatch
 - ✅ **Standard Errors**: Serializable `RuntimeError` types
 - ✅ **Transport Protocol**: Common interface for all transport implementations
-- ✅ **Pluggable Serialization**: JSON (default), Protocol Buffers, or custom
 - ✅ **Zero Dependencies**: Pure Swift standard library
 - ✅ **Sendable-Safe**: Full Swift 6 concurrency support
 
@@ -105,7 +105,8 @@ public final class MyTransport: DistributedTransport {
 │  │ InvocationEnvelope         │  │
 │  │ ResponseEnvelope           │  │
 │  │ ActorRegistry              │  │
-│  │ MethodRegistry             │  │
+│  │ CodableInvocationEncoder   │  │
+│  │ CodableInvocationDecoder   │  │
 │  │ RuntimeError               │  │
 │  │ DistributedTransport       │  │
 │  └────────────────────────────┘  │
@@ -158,21 +159,6 @@ registry.clear()
 
 **Memory Management**: `ActorRegistry` maintains strong references. Always call `unregister(id:)` when actors are no longer needed to prevent memory leaks.
 
-### MethodRegistry
-
-Executes methods by name:
-
-```swift
-let registry = MethodRegistry()
-
-registry.register("readTemperature") { argsData in
-    let result = try await self.readTemperature()
-    return try JSONEncoder().encode(result)
-}
-
-let resultData = try await registry.execute("readTemperature", arguments: Data())
-```
-
 ### RuntimeError
 
 Standard error types:
@@ -198,9 +184,50 @@ throw RuntimeError.timeout(10.0)
 - [ActorEdge](https://github.com/1amageek/actor-edge) - gRPC
 - *Your transport here!*
 
+## Core Components
+
+### CodableInvocationEncoder / Decoder
+
+The Codec system enables distributed method calls with Codable arguments:
+
+```swift
+// In your DistributedActorSystem implementation
+func remoteCall<Act, Err, Res>(
+    on actor: Act,
+    target: RemoteCallTarget,
+    invocation: inout InvocationEncoder,
+    throwing: Err.Type,
+    returning: Res.Type
+) async throws -> Res {
+    var encoder = invocation as! CodableInvocationEncoder
+    encoder.recordTarget(target)
+
+    let envelope = try encoder.makeInvocationEnvelope(
+        recipientID: actor.id.description
+    )
+
+    // Send envelope over your transport...
+    let response = try await transport.sendInvocation(envelope)
+
+    // Decode result
+    switch response.result {
+    case .success(let data):
+        return try JSONDecoder().decode(Res.self, from: data)
+    case .void:
+        return () as! Res
+    case .failure(let error):
+        throw error
+    }
+}
+```
+
+See [Examples/InMemoryTransport.swift](Examples/InMemoryTransport.swift) for a complete working implementation.
+
 ## Documentation
 
 - [Design Documentation](Documentation/DESIGN.md) - Detailed architecture and design decisions
+- [Codec System Design](Documentation/CODEC.md) - InvocationEncoder/Decoder implementation details
+- [InMemoryTransport Example](Examples/InMemoryTransport.swift) - Complete working transport implementation
 
 ## License
 

@@ -11,14 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release of swift-actor-runtime
 - `InvocationEnvelope` and `ResponseEnvelope` for transport-agnostic RPC
 - `ActorRegistry` for thread-safe actor instance tracking
-- `MethodRegistry` for distributed method execution without reflection
+- `CodableInvocationEncoder`/`Decoder` for Codable argument encoding/decoding
+- `CodableResultHandler` for result handling
 - `RuntimeError` with standard, serializable error types
 - `DistributedTransport` protocol for transport implementations
-- `SerializationSystem` protocol with JSON implementation
 - Full Swift 6 concurrency support with `Sendable` conformance
 - Thread-safe implementation using `Synchronization.Mutex`
-- Comprehensive test suite (53 tests)
-- Complete documentation (README, DESIGN, CLAUDE)
+- Integration with Swift's built-in `executeDistributedTarget` for method dispatch
+- All envelopes fully support Swift's `Codable` protocol
+- Complete working example: InMemoryActorSystem
+- Comprehensive test suite (52 tests including integration tests)
+- Complete documentation (README, DESIGN, CLAUDE, CODEC)
 - Memory management guidance for strong reference lifecycle
 - Recursive lock prevention in ActorRegistry
 
@@ -26,4 +29,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Actions CI/CD for macOS and Linux
 - MIT License
 
-[0.1.0]: https://github.com/1amageek/swift-actor-runtime/releases/tag/v0.1.0
+[0.1.0]: https://github.com/1amageek/swift-actor-runtime/releases/tag/0.1.0
