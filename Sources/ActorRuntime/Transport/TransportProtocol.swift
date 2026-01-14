@@ -47,6 +47,17 @@ import Foundation
 ///
 public protocol DistributedTransport: Sendable {
 
+    /// Open the transport for communication
+    ///
+    /// This prepares the transport for sending and receiving invocations:
+    /// - Server: binds to port, starts accepting connections
+    /// - Client: establishes connection to remote peer
+    /// - Peer/Mesh: both of the above
+    ///
+    /// - Throws: Transport-specific errors (e.g., port already in use, connection refused)
+    ///
+    func open() async throws
+
     /// Send an invocation and await its response (client side)
     ///
     /// - Parameter envelope: The invocation to send
@@ -102,6 +113,11 @@ public protocol DistributedTransport: Sendable {
 
 /// Extension providing default implementations
 extension DistributedTransport {
+    /// Default open implementation (no-op)
+    public func open() async throws {
+        // Default: no setup needed
+    }
+
     /// Default close implementation (no-op)
     public func close() async throws {
         // Default: no cleanup needed
