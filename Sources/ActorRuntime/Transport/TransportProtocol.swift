@@ -72,8 +72,9 @@ public protocol DistributedTransport: Sendable {
     /// - Should handle deserialization from transport format
     /// - May need to reassemble fragmented messages
     /// - Should be a long-lived stream for the lifetime of the transport
+    /// - Throws transport-level errors (connection lost, deserialization failure, etc.)
     ///
-    var incomingInvocations: AsyncStream<InvocationEnvelope> { get }
+    var incomingInvocations: AsyncThrowingStream<InvocationEnvelope, Error> { get }
 
     /// Send a response to an invocation (server side)
     ///
