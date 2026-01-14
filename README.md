@@ -12,6 +12,24 @@ Transport-agnostic primitives for implementing Swift Distributed Actor systems.
 
 **Vision**: "Write once, run on any transport"
 
+### Who Is This For?
+
+| Audience | Use Case |
+|----------|----------|
+| **Transport Authors** | Building a new distributed actor transport (e.g., MQTT, WebSocket, custom protocol). This library provides all the common infrastructure so you can focus on connectivity. |
+| **App Developers** | Using an existing transport (Bleu, ActorEdge). You don't need to use this library directly—it's a dependency of your transport. |
+
+### When to Use This Library
+
+**Use this library if you are:**
+- Implementing a new `DistributedActorSystem` for a specific protocol
+- Building infrastructure that needs to serialize/deserialize distributed actor calls
+- Creating a transport-agnostic layer for your distributed system
+
+**You probably don't need this library directly if you are:**
+- Building apps using existing transports like Bleu or ActorEdge
+- Just defining distributed actors for your application
+
 ## Features
 
 - ✅ **Universal Envelopes**: `InvocationEnvelope` and `ResponseEnvelope` for method calls
@@ -22,6 +40,7 @@ Transport-agnostic primitives for implementing Swift Distributed Actor systems.
 - ✅ **Swift Runtime Integration**: Uses `executeDistributedTarget` for method dispatch
 - ✅ **Standard Errors**: Serializable `RuntimeError` types
 - ✅ **Transport Protocol**: Common interface for all transport implementations
+- ✅ **Error Propagation**: `AsyncThrowingStream` for transport-level error handling
 - ✅ **Zero Dependencies**: Pure Swift standard library
 - ✅ **Sendable-Safe**: Full Swift 6 concurrency support
 
@@ -31,7 +50,7 @@ Transport-agnostic primitives for implementing Swift Distributed Actor systems.
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/1amageek/swift-actor-runtime", from: "0.1.0")
+    .package(url: "https://github.com/1amageek/swift-actor-runtime", from: "0.3.0")
 ]
 ```
 
@@ -77,9 +96,10 @@ public final class MyTransport: DistributedTransport {
         // 4. Return ResponseEnvelope
     }
 
-    public var incomingInvocations: AsyncStream<InvocationEnvelope> {
-        AsyncStream { continuation in
+    public var incomingInvocations: AsyncThrowingStream<InvocationEnvelope, Error> {
+        AsyncThrowingStream { continuation in
             // Listen for incoming RPCs on your transport
+            // Use continuation.finish(throwing:) for transport errors
         }
     }
 
@@ -174,6 +194,40 @@ throw RuntimeError.methodNotFound("readTemperature")
 throw RuntimeError.timeout(10.0)
 ```
 
+### Error Handling
+
+The `incomingInvocations` stream uses `AsyncThrowingStream` to propagate transport-level errors:
+
+```swift
+// In your ActorSystem's server loop
+do {
+    for try await envelope in transport.incomingInvocations {
+        // Handle incoming invocation
+        await handleInvocation(envelope)
+    }
+} catch {
+    // Handle transport errors (connection lost, deserialization failed, etc.)
+    print("Transport error: \(error)")
+}
+```
+
+Transport implementations can signal errors using the continuation:
+
+```swift
+public var incomingInvocations: AsyncThrowingStream<InvocationEnvelope, Error> {
+    AsyncThrowingStream { continuation in
+        // On successful message
+        continuation.yield(envelope)
+
+        // On transport error
+        continuation.finish(throwing: TransportError.connectionLost)
+
+        // On clean shutdown
+        continuation.finish()
+    }
+}
+```
+
 ## Platform Support
 
 - Swift 6.2+
@@ -189,7 +243,7 @@ throw RuntimeError.timeout(10.0)
 - [ActorEdge](https://github.com/1amageek/actor-edge) - gRPC
 - *Your transport here!*
 
-## Core Components
+## Codec System
 
 ### CodableInvocationEncoder / Decoder
 
