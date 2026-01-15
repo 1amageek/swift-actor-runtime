@@ -32,14 +32,14 @@ Transport-agnostic primitives for implementing Swift Distributed Actor systems.
 
 ## Features
 
-- ✅ **Universal Envelopes**: `InvocationEnvelope` and `ResponseEnvelope` for method calls
+- ✅ **Unified Envelope**: Single `Envelope` type for bidirectional communication
+- ✅ **Rich Metadata**: Timestamps, versioning, and custom headers for tracing
 - ✅ **Actor Registry**: Thread-safe actor instance tracking via `Mutex`
-- ✅ **Codable Codec**: Complete `InvocationEncoder`/`Decoder` implementation for Codable arguments
-- ✅ **Generic Method Support**: Full support for distributed methods with generic type parameters
-- ✅ **Generic Actor Support**: Support for distributed actors with generic constraints
+- ✅ **Codable Codec**: Complete `InvocationEncoder`/`Decoder` implementation
+- ✅ **Generic Support**: Full support for generic methods and generic actors
 - ✅ **Swift Runtime Integration**: Uses `executeDistributedTarget` for method dispatch
 - ✅ **Standard Errors**: Serializable `RuntimeError` types
-- ✅ **Transport Protocol**: Common interface for all transport implementations
+- ✅ **Symmetric Transport Protocol**: Bidirectional communication where both peers can send invocations
 - ✅ **Error Propagation**: `AsyncThrowingStream` for transport-level error handling
 - ✅ **Zero Dependencies**: Pure Swift standard library
 - ✅ **Sendable-Safe**: Full Swift 6 concurrency support
@@ -87,27 +87,36 @@ let temp = try await sensors[0].readTemperature()
 ```swift
 import ActorRuntime
 
-public final class MyTransport: DistributedTransport {
-    public func sendInvocation(_ envelope: InvocationEnvelope) async throws -> ResponseEnvelope {
-        // Your transport-specific code here
-        // 1. Serialize envelope
-        // 2. Send over your protocol (BLE, HTTP, etc.)
-        // 3. Await response
-        // 4. Return ResponseEnvelope
-    }
-
-    public var incomingInvocations: AsyncThrowingStream<InvocationEnvelope, Error> {
+public final class MyTransport: DistributedTransport, Sendable {
+    public var messages: AsyncThrowingStream<Envelope, Error> {
         AsyncThrowingStream { continuation in
-            // Listen for incoming RPCs on your transport
+            // Listen for incoming messages on your transport
+            // Yield both invocations and responses
             // Use continuation.finish(throwing:) for transport errors
         }
     }
 
-    public func sendResponse(_ envelope: ResponseEnvelope) async throws {
-        // Send response back to caller
+    public func start() async throws {
+        // Initialize connection (bind port, connect to peer, etc.)
+    }
+
+    public func send(_ envelope: Envelope) async throws {
+        // Serialize and send envelope over your protocol
+        switch envelope {
+        case .invocation(let inv):
+            // Send invocation request
+        case .response(let res):
+            // Send response
+        }
+    }
+
+    public func stop() async {
+        // Close connections and cleanup resources
     }
 }
 ```
+
+The transport protocol supports **symmetric bidirectional communication** - both peers can send invocations and responses, enabling P2P patterns and server-initiated calls.
 
 ## Architecture
 
@@ -124,8 +133,9 @@ public final class MyTransport: DistributedTransport {
 ┌────────────┴─────────────────────┐
 │    swift-actor-runtime           │
 │  ┌────────────────────────────┐  │
-│  │ InvocationEnvelope         │  │
-│  │ ResponseEnvelope           │  │
+│  │ Envelope                   │  │
+│  │   ├─ InvocationEnvelope    │  │
+│  │   └─ ResponseEnvelope      │  │
 │  │ ActorRegistry              │  │
 │  │ CodableInvocationEncoder   │  │
 │  │ CodableInvocationDecoder   │  │
@@ -137,30 +147,58 @@ public final class MyTransport: DistributedTransport {
 
 ## Core Components
 
+### Envelope
+
+Unified message type for bidirectional communication:
+
+```swift
+// Wrap invocations and responses in a single type
+let message: Envelope = .invocation(invocationEnvelope)
+let reply: Envelope = .response(responseEnvelope)
+
+// Pattern match to handle messages
+for try await envelope in transport.messages {
+    switch envelope {
+    case .invocation(let inv):
+        // Handle incoming method call
+    case .response(let res):
+        // Handle response to a previous call
+    }
+}
+```
+
 ### InvocationEnvelope
 
-Represents a distributed method call:
+Represents a distributed method call with metadata:
 
 ```swift
 let envelope = InvocationEnvelope(
     recipientID: "sensor-1",
+    senderID: "client-1",           // Optional sender identifier
     target: "readTemperature",
-    genericSubstitutions: [], // Optional: for generic methods
-    arguments: Data()
+    genericSubstitutions: [],        // For generic methods
+    arguments: Data(),
+    metadata: .init(
+        headers: ["trace-id": "abc123"]  // Custom headers for tracing
+    )
 )
 ```
 
-For generic methods, the envelope automatically captures type substitutions to ensure type-safe distributed calls.
-
 ### ResponseEnvelope
 
-Represents the result:
+Represents the result with metadata:
 
 ```swift
 let response = ResponseEnvelope(
     callID: envelope.callID,
-    result: .success(resultData)
+    result: .success(resultData),
+    metadata: .init(executionTime: 0.05)  // Optional execution timing
 )
+
+// Convenient methods for adding metadata
+let enriched = response
+    .withExecutionTime(0.05)
+    .withHeader("trace-id", value: "abc123")
 ```
 
 ### ActorRegistry
@@ -196,14 +234,18 @@ throw RuntimeError.timeout(10.0)
 
 ### Error Handling
 
-The `incomingInvocations` stream uses `AsyncThrowingStream` to propagate transport-level errors:
+The `messages` stream uses `AsyncThrowingStream` to propagate transport-level errors:
 
 ```swift
-// In your ActorSystem's server loop
+// In your ActorSystem's message loop
 do {
-    for try await envelope in transport.incomingInvocations {
-        // Handle incoming invocation
-        await handleInvocation(envelope)
+    for try await envelope in transport.messages {
+        switch envelope {
+        case .invocation(let inv):
+            await handleInvocation(inv)
+        case .response(let res):
+            await handleResponse(res)
+        }
     }
 } catch {
     // Handle transport errors (connection lost, deserialization failed, etc.)
@@ -214,13 +256,13 @@ do {
 Transport implementations can signal errors using the continuation:
 
 ```swift
-public var incomingInvocations: AsyncThrowingStream<InvocationEnvelope, Error> {
+public var messages: AsyncThrowingStream<Envelope, Error> {
     AsyncThrowingStream { continuation in
         // On successful message
-        continuation.yield(envelope)
+        continuation.yield(.invocation(envelope))
 
         // On transport error
-        continuation.finish(throwing: TransportError.connectionLost)
+        continuation.finish(throwing: RuntimeError.transportFailed("Connection lost"))
 
         // On clean shutdown
         continuation.finish()
@@ -265,8 +307,11 @@ func remoteCall<Act, Err, Res>(
         recipientID: actor.id.description
     )
 
-    // Send envelope over your transport...
-    let response = try await transport.sendInvocation(envelope)
+    // Send envelope over your transport
+    try await transport.send(.invocation(envelope))
+
+    // Await response via messages stream (implementation handles callID matching)
+    let response = try await awaitResponse(callID: envelope.callID)
 
     // Decode result
     switch response.result {

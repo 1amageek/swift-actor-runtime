@@ -2,124 +2,92 @@ import Foundation
 
 /// Transport layer interface for distributed actor communication
 ///
-/// All transport implementations (BLE, gRPC, WebSocket, etc.) must conform to this protocol.
-/// The runtime handles invocation/response logic; transports handle connectivity.
+/// All transport implementations (gRPC, WebSocket, BLE, etc.) must conform to this protocol.
+/// The protocol supports symmetric bidirectional communication where both peers can
+/// send invocations and responses.
 ///
-/// ## Responsibilities
+/// ## Overview
 ///
-/// **Transport Layer**:
-/// - Connection management
-/// - Message delivery
-/// - Fragmentation (if needed)
-/// - Transport-specific optimizations
+/// `DistributedTransport` abstracts the underlying communication mechanism,
+/// allowing distributed actors to communicate over any transport layer.
+/// Implementations handle connection management, serialization, and message delivery.
 ///
-/// **Runtime Layer** (this package):
-/// - Envelope creation/parsing
-/// - Actor/method registry
-/// - Serialization
+/// The transport lifecycle follows a simple pattern:
+/// 1. Create the transport instance
+/// 2. Call ``start()`` to initialize connections
+/// 3. Use ``send(_:)`` and ``messages`` for communication
+/// 4. Call ``stop()`` to cleanup resources
 ///
-/// ## Implementation Example
+/// ## Usage
 ///
 /// ```swift
-/// import ActorRuntime
+/// let transport = GRPCTransport(port: 50051)
+/// try await transport.start()
 ///
-/// public final class BLETransport: DistributedTransport {
-///     public func sendInvocation(_ envelope: InvocationEnvelope) async throws -> ResponseEnvelope {
-///         let data = try JSONEncoder().encode(envelope)
-///         // BLE-specific: fragment and send
-///         try await writeBLECharacteristic(data)
-///         return try await awaitBLEResponse(callID: envelope.callID)
-///     }
+/// // Send messages
+/// try await transport.send(.invocation(envelope))
+/// try await transport.send(.response(response))
 ///
-///     public var incomingInvocations: AsyncStream<InvocationEnvelope> {
-///         AsyncStream { continuation in
-///             // Setup BLE delegate callbacks
-///         }
-///     }
-///
-///     public func sendResponse(_ envelope: ResponseEnvelope) async throws {
-///         let data = try JSONEncoder().encode(envelope)
-///         // BLE-specific: send via notification
-///         try await notifyBLECharacteristic(data)
+/// // Receive messages
+/// for try await envelope in transport.messages {
+///     switch envelope {
+///     case .invocation(let inv):
+///         // Handle incoming method call
+///     case .response(let res):
+///         // Handle response to a previous call
 ///     }
 /// }
+///
+/// // Cleanup
+/// await transport.stop()
 /// ```
+///
+/// ## Implementing a Transport
+///
+/// When implementing this protocol:
+/// - ``start()`` should establish connections and prepare for communication
+/// - ``send(_:)`` should serialize and deliver the envelope reliably
+/// - ``messages`` should yield envelopes as they arrive
+/// - ``stop()`` should close connections and release resources
 ///
 public protocol DistributedTransport: Sendable {
 
-    /// Open the transport for communication
+    /// Starts the transport and prepares for communication.
     ///
-    /// This prepares the transport for sending and receiving invocations:
-    /// - Server: binds to port, starts accepting connections
-    /// - Client: establishes connection to remote peer
-    /// - Peer/Mesh: both of the above
+    /// This method initializes the transport layer. Depending on the implementation:
+    /// - **Server mode**: Binds to a port and starts accepting connections
+    /// - **Client mode**: Establishes a connection to the remote peer
     ///
-    /// - Throws: Transport-specific errors (e.g., port already in use, connection refused)
-    ///
-    func open() async throws
+    /// - Throws: Transport-specific errors if initialization fails
+    ///   (e.g., port already in use, connection refused).
+    func start() async throws
 
-    /// Send an invocation and await its response (client side)
+    /// Sends an envelope to the remote peer.
     ///
-    /// - Parameter envelope: The invocation to send
-    /// - Returns: The response envelope
-    /// - Throws: Transport-specific errors or `RuntimeError.timeout`
+    /// Both invocations and responses can be sent using this method,
+    /// enabling symmetric bidirectional communication.
     ///
-    /// ## Implementation Notes
-    ///
-    /// - This method should handle serialization and transport-specific delivery
-    /// - Must await the corresponding response before returning
-    /// - Should implement timeout handling
-    /// - May fragment large messages if needed
-    ///
-    func sendInvocation(_ envelope: InvocationEnvelope) async throws -> ResponseEnvelope
+    /// - Parameter envelope: The envelope to send (invocation or response).
+    /// - Throws: Transport-specific errors if sending fails
+    ///   (e.g., connection lost, serialization error).
+    func send(_ envelope: Envelope) async throws
 
-    /// Stream of incoming invocations (server side)
+    /// A stream of incoming envelopes from remote peers.
     ///
-    /// The transport listens for incoming RPC requests and yields them as they arrive.
-    /// The runtime processes each invocation and sends responses via `sendResponse`.
+    /// This stream yields both invocations and responses as they arrive.
+    /// Use pattern matching to handle each message type appropriately.
     ///
-    /// ## Implementation Notes
-    ///
-    /// - Should handle deserialization from transport format
-    /// - May need to reassemble fragmented messages
-    /// - Should be a long-lived stream for the lifetime of the transport
-    /// - Throws transport-level errors (connection lost, deserialization failure, etc.)
-    ///
-    var incomingInvocations: AsyncThrowingStream<InvocationEnvelope, Error> { get }
+    /// The stream throws errors for transport-level failures such as
+    /// connection loss or deserialization errors.
+    var messages: AsyncThrowingStream<Envelope, Error> { get }
 
-    /// Send a response to an invocation (server side)
+    /// Stops the transport and releases all resources.
     ///
-    /// - Parameter envelope: The response to send
-    /// - Throws: Transport-specific errors
+    /// This method should:
+    /// - Close all active connections
+    /// - Cancel any pending operations
+    /// - Release system resources (sockets, file handles, etc.)
     ///
-    /// ## Implementation Notes
-    ///
-    /// - Should handle serialization and transport-specific delivery
-    /// - May fragment large messages if needed
-    /// - Should match callID to route response to correct client
-    ///
-    func sendResponse(_ envelope: ResponseEnvelope) async throws
-
-    /// Close the transport and cleanup resources
-    ///
-    /// - Throws: Cleanup errors (optional)
-    ///
-    /// ## Default Implementation
-    ///
-    /// A no-op default implementation is provided. Override if cleanup is needed.
-    ///
-    func close() async throws
-}
-
-/// Extension providing default implementations
-extension DistributedTransport {
-    /// Default open implementation (no-op)
-    public func open() async throws {
-        // Default: no setup needed
-    }
-
-    /// Default close implementation (no-op)
-    public func close() async throws {
-        // Default: no cleanup needed
-    }
+    /// After calling this method, the transport should not be reused.
+    func stop() async
 }

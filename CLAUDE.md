@@ -74,9 +74,11 @@ swift-actor-runtime (this library)
 ### Core Components and Their Relationships
 
 1. **Envelope System** (`Sources/ActorRuntime/Core/Envelope.swift`)
-   - `InvocationEnvelope`: Represents a method call (callID, recipientID, target method, genericSubstitutions, arguments)
-   - `ResponseEnvelope`: Represents the result (callID, result/error)
+   - `Envelope`: Unified message type for bidirectional communication (`.invocation` / `.response`)
+   - `InvocationEnvelope`: Represents a method call (callID, recipientID, senderID, target, genericSubstitutions, arguments, metadata)
+   - `ResponseEnvelope`: Represents the result (callID, result/error, metadata)
    - `InvocationResult`: Enum for success/void/failure
+   - `Metadata`: Timestamp, version, headers for tracing and debugging
    - These are transport-agnostic; transports serialize them to their native format
    - `genericSubstitutions: [String]` field stores mangled type names for generic methods
 
@@ -97,34 +99,42 @@ swift-actor-runtime (this library)
 
 5. **Transport Protocol** (`Sources/ActorRuntime/Transport/TransportProtocol.swift`)
    - `DistributedTransport`: Interface all transport implementations must conform to
-   - Methods: `sendInvocation()`, `incomingInvocations`, `sendResponse()`, `close()`
+   - Methods: `start()`, `send(_:)`, `messages`, `stop()`
+   - Symmetric bidirectional design: both sides can send invocations and responses
    - All envelopes are `Codable` and can be serialized using standard Swift encoders/decoders
 
 ### Key Design Decisions
 
 - **Use executeDistributedTarget**: Swift provides `executeDistributedTarget` for method dispatch - no manual registration needed
+- **Symmetric Bidirectional Communication**: Both peers can send invocations and responses, enabling P2P and server-initiated calls
 - **Thread Safety via Mutex**: All registries use `Synchronization.Mutex` (Swift 6.0+) for Sendable conformance without `@unchecked`
 - **String IDs not UUIDs**: Actor/call identifiers are strings to allow custom ID schemes
 - **Zero Dependencies**: Pure Swift standard library for maximum compatibility
 
 ## RPC Data Flow
 
-### Client → Server (Method Call):
-1. Client calls `actor.method()`
-2. Transport creates `InvocationEnvelope` with callID, recipientID, target, arguments
-3. Transport serializes and sends over wire
-4. Server transport deserializes to `InvocationEnvelope`
-5. Runtime finds actor via `ActorRegistry.find(id:)`
-6. **Swift runtime executes method via `executeDistributedTarget`** (automatic dispatch)
-7. Method executes and returns result
-8. Runtime creates `ResponseEnvelope` with result
+The transport layer uses symmetric bidirectional communication. Both peers can initiate invocations and send responses.
 
-### Server → Client (Response):
-9. Transport serializes `ResponseEnvelope`
-10. Transport sends over wire
-11. Client transport deserializes
-12. Transport matches callID to pending call
-13. Transport resumes continuation with result
+### Sending an Invocation (Caller Side):
+1. Caller invokes `actor.method()`
+2. Transport creates `InvocationEnvelope` with callID, recipientID, senderID, target, arguments, metadata
+3. Transport wraps in `Envelope.invocation()` and calls `send(_:)`
+4. Transport serializes and sends over wire
+5. Caller stores pending continuation keyed by callID
+
+### Receiving an Invocation (Callee Side):
+6. Transport receives `Envelope.invocation` via `messages` stream
+7. Runtime finds actor via `ActorRegistry.find(id:)`
+8. **Swift runtime executes method via `executeDistributedTarget`** (automatic dispatch)
+9. Method executes and returns result
+10. Runtime creates `ResponseEnvelope` with result and metadata
+
+### Sending/Receiving Response:
+11. Callee wraps in `Envelope.response()` and calls `send(_:)`
+12. Transport serializes and sends over wire
+13. Caller receives `Envelope.response` via `messages` stream
+14. Caller matches callID to pending continuation
+15. Caller resumes continuation with result
 
 ### Key Point: executeDistributedTarget
 The Swift runtime's `executeDistributedTarget` handles:
@@ -160,12 +170,12 @@ The Swift runtime's `executeDistributedTarget` handles:
 
 - You **must** call `unregister(id:)` when actors are no longer needed
 - Failure to unregister can cause memory leaks in long-running systems
-- Consider implementing cleanup logic in your transport's `close()` method
+- Consider implementing cleanup logic in your transport's `stop()` method
 
 Example cleanup pattern:
 ```swift
 // In your ActorSystem implementation
-func close() async throws {
+func stop() async {
     // Unregister all actors before shutdown
     registry.clear()
 

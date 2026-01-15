@@ -1,5 +1,41 @@
 import Foundation
 
+/// Unified message type for bidirectional communication
+///
+/// Wraps both invocation requests and responses into a single type,
+/// enabling symmetric communication where either peer can send any message type.
+///
+/// ## Overview
+///
+/// The `Envelope` type simplifies transport implementations by providing
+/// a single type to send and receive. Pattern match on the cases to handle
+/// each message type appropriately.
+///
+/// ## Usage
+///
+/// ```swift
+/// // Sending
+/// try await transport.send(.invocation(envelope))
+/// try await transport.send(.response(response))
+///
+/// // Receiving
+/// for try await envelope in transport.messages {
+///     switch envelope {
+///     case .invocation(let inv):
+///         // Handle incoming method call
+///     case .response(let res):
+///         // Handle response to a previous call
+///     }
+/// }
+/// ```
+///
+public enum Envelope: Codable, Sendable, Hashable {
+    /// A distributed method invocation request
+    case invocation(InvocationEnvelope)
+    /// A response to a previous invocation
+    case response(ResponseEnvelope)
+}
+
 /// Universal invocation envelope for distributed method calls
 ///
 /// Represents a remote procedure call in a transport-agnostic way.
@@ -37,16 +73,26 @@ public struct InvocationEnvelope: Codable, Sendable, Hashable {
     /// Invocation metadata
     public let metadata: Metadata
 
+    /// Metadata associated with an invocation request
+    ///
+    /// Contains contextual information about the invocation such as timing,
+    /// protocol version, and custom headers for tracing or transport-specific needs.
     public struct Metadata: Codable, Sendable, Hashable {
-        /// When the invocation was created
+        /// The timestamp when the invocation was created
         public let timestamp: Date
 
-        /// Protocol version for compatibility
+        /// Protocol version for compatibility checking
         public let version: String
 
-        /// Custom headers for transport-specific needs
+        /// Custom headers for transport-specific needs (e.g., tracing, authentication)
         public let headers: [String: String]
 
+        /// Creates new invocation metadata.
+        ///
+        /// - Parameters:
+        ///   - timestamp: When the invocation was created. Defaults to now.
+        ///   - version: Protocol version string. Defaults to `"1.0"`.
+        ///   - headers: Custom key-value headers. Defaults to empty.
         public init(
             timestamp: Date = Date(),
             version: String = "1.0",
@@ -58,6 +104,16 @@ public struct InvocationEnvelope: Codable, Sendable, Hashable {
         }
     }
 
+    /// Creates a new invocation envelope.
+    ///
+    /// - Parameters:
+    ///   - callID: Unique identifier for this call. Defaults to a new UUID string.
+    ///   - recipientID: The target actor's identifier.
+    ///   - senderID: Optional identifier of the sending actor.
+    ///   - target: The method identifier (typically a mangled Swift function name).
+    ///   - genericSubstitutions: Mangled type names for generic type parameters.
+    ///   - arguments: Serialized method arguments.
+    ///   - metadata: Associated metadata. Defaults to new metadata with current timestamp.
     public init(
         callID: String = UUID().uuidString,
         recipientID: String,
@@ -114,16 +170,26 @@ public struct ResponseEnvelope: Codable, Sendable, Hashable {
     /// Response metadata
     public let metadata: Metadata
 
+    /// Metadata associated with a response
+    ///
+    /// Contains contextual information about the response including timing
+    /// information and custom headers for tracing or debugging.
     public struct Metadata: Codable, Sendable, Hashable {
-        /// When the response was created
+        /// The timestamp when the response was created
         public let timestamp: Date
 
-        /// How long the method took to execute (optional)
+        /// The method execution time in seconds, if measured
         public let executionTime: TimeInterval?
 
-        /// Custom headers
+        /// Custom headers for transport-specific needs (e.g., tracing, debugging)
         public let headers: [String: String]
 
+        /// Creates new response metadata.
+        ///
+        /// - Parameters:
+        ///   - timestamp: When the response was created. Defaults to now.
+        ///   - executionTime: How long the method took to execute, if measured.
+        ///   - headers: Custom key-value headers. Defaults to empty.
         public init(
             timestamp: Date = Date(),
             executionTime: TimeInterval? = nil,
@@ -135,6 +201,12 @@ public struct ResponseEnvelope: Codable, Sendable, Hashable {
         }
     }
 
+    /// Creates a new response envelope.
+    ///
+    /// - Parameters:
+    ///   - callID: The call identifier matching the original invocation.
+    ///   - result: The result of the invocation (success, void, or failure).
+    ///   - metadata: Associated metadata. Defaults to new metadata with current timestamp.
     public init(
         callID: String,
         result: InvocationResult,
@@ -231,17 +303,44 @@ extension ResponseEnvelope {
 
 /// Result of a remote invocation
 ///
-/// Distinguishes between successful executions (with or without return value)
-/// and failures.
+/// Represents the outcome of a distributed method call, distinguishing between
+/// successful executions (with or without return value) and failures.
+///
+/// ## Overview
+///
+/// Use this enum to wrap the result of executing a distributed method.
+/// The three cases cover all possible outcomes:
+/// - `success`: Method returned a value (serialized as `Data`)
+/// - `void`: Method completed successfully with no return value
+/// - `failure`: Method threw an error
+///
+/// ## Usage
+///
+/// ```swift
+/// // Creating results
+/// let successResult = InvocationResult.success(encodedData)
+/// let voidResult = InvocationResult.void
+/// let errorResult = InvocationResult.failure(.actorNotFound("sensor-1"))
+///
+/// // Handling results
+/// switch result {
+/// case .success(let data):
+///     let value = try decoder.decode(MyType.self, from: data)
+/// case .void:
+///     // No return value to process
+/// case .failure(let error):
+///     throw error
+/// }
+/// ```
 ///
 public enum InvocationResult: Codable, Sendable, Hashable {
-    /// Successful execution with return value
+    /// Successful execution with a serialized return value
     case success(Data)
 
-    /// Void return (method completed successfully with no value)
+    /// Successful execution with no return value (void method)
     case void
 
-    /// Method threw an error
+    /// Execution failed with an error
     case failure(RuntimeError)
 
     // MARK: - Codable Conformance

@@ -285,4 +285,181 @@ struct EnvelopeTests {
         #expect(enriched.metadata.headers["span-id"] == "def456")
         #expect(enriched.metadata.headers["user-id"] == "user1")
     }
+
+    // MARK: - Envelope (Unified Type) Tests
+
+    @Test("Envelope invocation case creation")
+    func testEnvelopeInvocationCase() throws {
+        let invocation = InvocationEnvelope(
+            callID: "call-123",
+            recipientID: "sensor-1",
+            target: "readTemperature",
+            arguments: Data([1, 2, 3])
+        )
+
+        let envelope = Envelope.invocation(invocation)
+
+        switch envelope {
+        case .invocation(let inv):
+            #expect(inv.callID == "call-123")
+            #expect(inv.recipientID == "sensor-1")
+        case .response:
+            Issue.record("Expected invocation case")
+        }
+    }
+
+    @Test("Envelope response case creation")
+    func testEnvelopeResponseCase() throws {
+        let response = ResponseEnvelope(
+            callID: "call-123",
+            result: .success(Data([42]))
+        )
+
+        let envelope = Envelope.response(response)
+
+        switch envelope {
+        case .response(let res):
+            #expect(res.callID == "call-123")
+        case .invocation:
+            Issue.record("Expected response case")
+        }
+    }
+
+    @Test("Envelope encoding and decoding invocation")
+    func testEnvelopeEncodingDecodingInvocation() throws {
+        let invocation = InvocationEnvelope(
+            callID: "call-123",
+            recipientID: "sensor-1",
+            senderID: "client-1",
+            target: "readTemperature",
+            arguments: Data([1, 2, 3]),
+            metadata: .init(
+                timestamp: Date(timeIntervalSince1970: 1000),
+                version: "1.0",
+                headers: ["key": "value"]
+            )
+        )
+
+        let original = Envelope.invocation(invocation)
+
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+
+        let data = try encoder.encode(original)
+        let decoded = try decoder.decode(Envelope.self, from: data)
+
+        switch decoded {
+        case .invocation(let inv):
+            #expect(inv.callID == invocation.callID)
+            #expect(inv.recipientID == invocation.recipientID)
+            #expect(inv.senderID == invocation.senderID)
+            #expect(inv.target == invocation.target)
+            #expect(inv.arguments == invocation.arguments)
+        case .response:
+            Issue.record("Expected invocation case after decoding")
+        }
+    }
+
+    @Test("Envelope encoding and decoding response")
+    func testEnvelopeEncodingDecodingResponse() throws {
+        let response = ResponseEnvelope(
+            callID: "call-123",
+            result: .success(Data([42])),
+            metadata: .init(
+                timestamp: Date(timeIntervalSince1970: 1000),
+                executionTime: 0.5,
+                headers: ["trace": "abc"]
+            )
+        )
+
+        let original = Envelope.response(response)
+
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+
+        let data = try encoder.encode(original)
+        let decoded = try decoder.decode(Envelope.self, from: data)
+
+        switch decoded {
+        case .response(let res):
+            #expect(res.callID == response.callID)
+            #expect(res.result == response.result)
+            #expect(res.metadata.executionTime == response.metadata.executionTime)
+        case .invocation:
+            Issue.record("Expected response case after decoding")
+        }
+    }
+
+    @Test("Envelope hashable and equatable")
+    func testEnvelopeHashableEquatable() throws {
+        let timestamp = Date(timeIntervalSince1970: 1000)
+
+        let invocation1 = InvocationEnvelope(
+            callID: "call-1",
+            recipientID: "sensor-1",
+            target: "read",
+            arguments: Data(),
+            metadata: .init(timestamp: timestamp)
+        )
+
+        let invocation2 = InvocationEnvelope(
+            callID: "call-1",
+            recipientID: "sensor-1",
+            target: "read",
+            arguments: Data(),
+            metadata: .init(timestamp: timestamp)
+        )
+
+        let invocation3 = InvocationEnvelope(
+            callID: "call-2",
+            recipientID: "sensor-2",
+            target: "write",
+            arguments: Data([1])
+        )
+
+        let envelope1 = Envelope.invocation(invocation1)
+        let envelope2 = Envelope.invocation(invocation2)
+        let envelope3 = Envelope.invocation(invocation3)
+
+        let response = ResponseEnvelope(callID: "call-1", result: .void)
+        let envelope4 = Envelope.response(response)
+
+        // Equality
+        #expect(envelope1 == envelope2)
+        #expect(envelope1 != envelope3)
+        #expect(envelope1 != envelope4)
+
+        // Can be used in Set
+        let envelopeSet: Set<Envelope> = [envelope1, envelope2, envelope3, envelope4]
+        #expect(envelopeSet.count == 3)
+    }
+
+    @Test("Envelope round-trip with all result types")
+    func testEnvelopeRoundTripAllResultTypes() throws {
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+
+        let results: [InvocationResult] = [
+            .success(Data([1, 2, 3])),
+            .void,
+            .failure(.actorNotFound("sensor-1")),
+            .failure(.timeout(30.0)),
+            .failure(.executionFailed("Error", underlying: "Details"))
+        ]
+
+        for result in results {
+            let response = ResponseEnvelope(callID: "test", result: result)
+            let envelope = Envelope.response(response)
+
+            let data = try encoder.encode(envelope)
+            let decoded = try decoder.decode(Envelope.self, from: data)
+
+            switch decoded {
+            case .response(let res):
+                #expect(res.result == result)
+            case .invocation:
+                Issue.record("Expected response case")
+            }
+        }
+    }
 }
