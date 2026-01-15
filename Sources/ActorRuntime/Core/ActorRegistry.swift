@@ -102,8 +102,8 @@ public final class ActorRegistry: Sendable {
         let actorToRelease = mutex.withLock { state -> (any DistributedActor)? in
             state.actors.removeValue(forKey: id)
         }
-        // Allow actorToRelease to be deallocated here, outside the lock
-        _ = actorToRelease
+        // Ensure actor is released after this point, safely outside the lock
+        withExtendedLifetime(actorToRelease) { _ in }
     }
 
     /// Get all registered actor IDs
@@ -124,13 +124,18 @@ public final class ActorRegistry: Sendable {
         // Extract actors from dictionary while holding lock,
         // then release them outside the lock to avoid recursive lock
         // if actor deinit calls resignID()
-        let actorsToRelease = mutex.withLock { state -> [String: any DistributedActor] in
-            let actors = state.actors
-            state.actors.removeAll()
-            return actors
+        //
+        // IMPORTANT: We use a two-phase approach to ensure actors are released
+        // outside the lock even with aggressive compiler optimizations:
+        // 1. Swap with empty dictionary (actors moved out atomically)
+        // 2. Release actors after lock is released
+        var actorsToRelease: [String: any DistributedActor] = [:]
+        mutex.withLock { state in
+            swap(&actorsToRelease, &state.actors)
         }
-        // Allow actorsToRelease to be deallocated here, outside the lock
-        _ = actorsToRelease
+        // actorsToRelease now holds all actors and will be deallocated
+        // after this scope, safely outside the lock
+        withExtendedLifetime(actorsToRelease) { _ in }
     }
 
     /// Number of registered actors

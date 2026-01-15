@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import Distributed
+import Synchronization
 @testable import ActorRuntime
 
 // MARK: - Mock ActorSystem for Testing
@@ -298,5 +299,184 @@ struct ActorRegistryIntegrationTests {
 
         #expect(system.testRegistry.count == 0)
         #expect(system.testRegistry.find(id: actorID) == nil)
+    }
+
+    // MARK: - Recursive Lock Prevention Tests
+    //
+    // These tests verify that ActorRegistry doesn't deadlock when actor deinit
+    // calls resignID() during unregister() or clear() operations.
+    // The fix uses withExtendedLifetime to ensure actors are released outside the lock.
+
+    @Test("ActorRegistry unregister does not deadlock on deinit resignID", .timeLimit(.minutes(1)))
+    func testUnregisterNoDeadlockOnDeinitResignID() async throws {
+        let system = RecursiveLockTestSystem()
+
+        // Create actor - system is the only strong reference holder via registry
+        let actorID: String
+        do {
+            let actor = RecursiveLockTestActor(actorSystem: system)
+            actorID = actor.id
+        }
+        // actor variable goes out of scope, but registry still holds reference
+
+        #expect(system.testRegistry.count == 1)
+
+        // This should NOT deadlock even though the actor's deinit will call resignID
+        // because the actor is released outside the lock
+        system.testRegistry.unregister(id: actorID)
+
+        // If we reach here, no deadlock occurred
+        #expect(system.testRegistry.count == 0)
+        #expect(system.resignIDCallCount == 1, "resignID should have been called once during unregister")
+    }
+
+    @Test("ActorRegistry clear does not deadlock on multiple deinit resignID", .timeLimit(.minutes(1)))
+    func testClearNoDeadlockOnMultipleDeinitResignID() async throws {
+        let system = RecursiveLockTestSystem()
+
+        // Create multiple actors
+        for _ in 0..<5 {
+            _ = RecursiveLockTestActor(actorSystem: system)
+        }
+
+        #expect(system.testRegistry.count == 5)
+
+        // This should NOT deadlock even though all actors' deinit will call resignID
+        system.testRegistry.clear()
+
+        // If we reach here, no deadlock occurred
+        #expect(system.testRegistry.count == 0)
+        #expect(system.resignIDCallCount == 5, "resignID should have been called 5 times during clear")
+    }
+
+    @Test("ActorRegistry handles rapid register-unregister cycles without deadlock", .timeLimit(.minutes(1)))
+    func testRapidRegisterUnregisterCycles() async throws {
+        let system = RecursiveLockTestSystem()
+
+        // Rapidly create and unregister actors
+        for _ in 0..<20 {
+            let actor = RecursiveLockTestActor(actorSystem: system)
+            let actorID = actor.id
+
+            // Immediately unregister
+            system.testRegistry.unregister(id: actorID)
+
+            // Verify cleanup
+            #expect(system.testRegistry.find(id: actorID) == nil)
+        }
+
+        #expect(system.testRegistry.count == 0)
+        // Each actor's deinit should have called resignID
+        #expect(system.resignIDCallCount == 20)
+    }
+
+    @Test("ActorRegistry concurrent unregister does not deadlock", .timeLimit(.minutes(1)))
+    func testConcurrentUnregisterNoDeadlock() async throws {
+        let system = RecursiveLockTestSystem()
+
+        // Create actors
+        var actorIDs: [String] = []
+        for _ in 0..<10 {
+            let actor = RecursiveLockTestActor(actorSystem: system)
+            actorIDs.append(actor.id)
+        }
+
+        #expect(system.testRegistry.count == 10)
+
+        // Concurrently unregister all actors
+        await withTaskGroup(of: Void.self) { group in
+            for id in actorIDs {
+                group.addTask {
+                    system.testRegistry.unregister(id: id)
+                }
+            }
+        }
+
+        // If we reach here, no deadlock occurred
+        #expect(system.testRegistry.count == 0)
+    }
+}
+
+// MARK: - Recursive Lock Test Infrastructure
+
+/// ActorSystem that tracks resignID calls to verify deinit behavior
+final class RecursiveLockTestSystem: DistributedActorSystem, @unchecked Sendable {
+    typealias ActorID = String
+    typealias InvocationEncoder = MockInvocationEncoder
+    typealias InvocationDecoder = MockInvocationDecoder
+    typealias SerializationRequirement = Codable
+    typealias ResultHandler = MockResultHandler
+
+    let testRegistry = ActorRegistry()
+    private let _resignIDCallCount = Mutex<Int>(0)
+
+    var resignIDCallCount: Int {
+        _resignIDCallCount.withLock { $0 }
+    }
+
+    func resolve<Act>(id: ActorID, as actorType: Act.Type) throws -> Act? where Act: DistributedActor {
+        testRegistry.find(id: id) as? Act
+    }
+
+    func assignID<Act>(_ actorType: Act.Type) -> ActorID where Act: DistributedActor {
+        UUID().uuidString
+    }
+
+    func actorReady<Act>(_ actor: Act) where Act: DistributedActor {
+        testRegistry.register(actor, id: actor.id as! String)
+    }
+
+    func resignID(_ id: ActorID) {
+        _resignIDCallCount.withLock { $0 += 1 }
+        // This simulates what happens when actor deinit calls resignID
+        // If the lock isn't properly released before deinit, this will deadlock
+        testRegistry.unregister(id: id)
+    }
+
+    func makeInvocationEncoder() -> InvocationEncoder {
+        MockInvocationEncoder()
+    }
+
+    nonisolated func remoteCall<Act, Err, Res>(
+        on actor: Act,
+        target: RemoteCallTarget,
+        invocation: inout InvocationEncoder,
+        throwing: Err.Type,
+        returning: Res.Type
+    ) async throws -> Res
+    where Act: DistributedActor,
+          Act.ID == ActorID,
+          Err: Error,
+          Res: SerializationRequirement {
+        fatalError("Remote call not implemented")
+    }
+
+    nonisolated func remoteCallVoid<Act, Err>(
+        on actor: Act,
+        target: RemoteCallTarget,
+        invocation: inout InvocationEncoder,
+        throwing: Err.Type
+    ) async throws
+    where Act: DistributedActor,
+          Act.ID == ActorID,
+          Err: Error {
+        fatalError("Remote call void not implemented")
+    }
+
+    func invokeHandlerOnReturn(
+        handler: ResultHandler,
+        resultBuffer: UnsafeRawPointer,
+        metatype: Any.Type
+    ) async throws {
+        try await handler.onReturnVoid()
+    }
+}
+
+/// Test actor that triggers resignID on deinit
+distributed actor RecursiveLockTestActor {
+    typealias ActorSystem = RecursiveLockTestSystem
+
+    distributed func ping() -> String {
+        "pong"
     }
 }
