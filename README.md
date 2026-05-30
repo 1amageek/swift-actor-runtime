@@ -50,7 +50,7 @@ Transport-agnostic primitives for implementing Swift Distributed Actor systems.
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/1amageek/swift-actor-runtime", from: "0.3.0")
+    .package(url: "https://github.com/1amageek/swift-actor-runtime", from: "0.5.0")
 ]
 ```
 
