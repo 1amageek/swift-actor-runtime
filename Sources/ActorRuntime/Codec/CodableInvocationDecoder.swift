@@ -31,13 +31,17 @@ public struct CodableInvocationDecoder: DistributedTargetInvocationDecoder {
     private var currentIndex: Int = 0
     private let target: String  // Store for better error messages
 
+    /// Reused across all arguments to avoid allocating a fresh decoder per
+    /// `decodeNextArgument` call.
+    private let jsonDecoder = JSONDecoder()
+
     /// Creates a decoder from an invocation envelope.
     ///
     /// - Parameter envelope: The envelope containing encoded arguments.
-    /// - Throws: `RuntimeError.serializationFailed` if the envelope cannot be decoded.
+    /// - Throws: `RuntimeError` if the envelope cannot be used to build a decoder.
     public init(envelope: InvocationEnvelope) throws {
-        // Decode the array of Data blobs
-        self.arguments = try JSONDecoder().decode([Data].self, from: envelope.arguments)
+        // Arguments are already a list of individually encoded blobs.
+        self.arguments = envelope.arguments
         self.genericSubstitutions = envelope.genericSubstitutions
         self.target = envelope.target
     }
@@ -45,9 +49,11 @@ public struct CodableInvocationDecoder: DistributedTargetInvocationDecoder {
     // MARK: - DistributedTargetInvocationDecoder
 
     public mutating func decodeGenericSubstitutions() throws -> [Any.Type] {
-        // Convert mangled type names back to Type objects
-        return try genericSubstitutions.compactMap { mangledName in
-            // Use Swift's internal _typeByName function to resolve mangled names
+        // Resolve each recorded type name back to a concrete `Any.Type`.
+        // The encoder records names via `_mangledTypeName`, which `_typeByName`
+        // can resolve. A nil result means the type is unavailable in this
+        // process; surface it instead of silently dropping the substitution.
+        return try genericSubstitutions.map { mangledName in
             guard let type = _typeByName(mangledName) else {
                 throw RuntimeError.serializationFailed(
                     "Failed to resolve generic type from mangled name: \(mangledName)"
@@ -68,7 +74,7 @@ public struct CodableInvocationDecoder: DistributedTargetInvocationDecoder {
         currentIndex += 1
 
         do {
-            return try JSONDecoder().decode(Argument.self, from: data)
+            return try jsonDecoder.decode(Argument.self, from: data)
         } catch {
             throw RuntimeError.serializationFailed(
                 "Failed to decode argument at index \(currentIndex - 1) as \(Argument.self) for method '\(target)': \(error.localizedDescription)"

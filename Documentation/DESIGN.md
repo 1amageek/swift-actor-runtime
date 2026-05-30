@@ -156,7 +156,7 @@ The runtime only handles:
 - `senderID: String?` - Source actor (optional, for bidirectional)
 - `target: String` - Method name (mangled Swift identifier)
 - `genericSubstitutions: [String]` - Generic type parameters (mangled type names)
-- `arguments: Data` - Serialized arguments
+- `arguments: [Data]` - Serialized arguments, one blob per parameter
 - `metadata: Metadata` - Timestamp, version, headers
 
 **Design decisions**:
@@ -260,7 +260,7 @@ protocol DistributedTransport: Sendable {
      callID: "uuid-1234",
      recipientID: "sensor-1",
      target: "readTemperature",
-     arguments: Data()
+     arguments: []
    }
    ↓
 3. Transport: Serialize and send over wire

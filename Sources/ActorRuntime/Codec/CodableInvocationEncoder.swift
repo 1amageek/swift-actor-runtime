@@ -41,6 +41,10 @@ public struct CodableInvocationEncoder: DistributedTargetInvocationEncoder {
     private var target: String?
     private var genericSubstitutions: [String] = []
 
+    /// Reused across all arguments of a single invocation to avoid allocating a
+    /// fresh encoder per `recordArgument` call.
+    private let jsonEncoder = JSONEncoder()
+
     public init() {}
 
     // MARK: - DistributedTargetInvocationEncoder
@@ -49,7 +53,16 @@ public struct CodableInvocationEncoder: DistributedTargetInvocationEncoder {
         guard state == .recording else {
             throw RuntimeError.invalidState("Cannot record generic substitution after encoding")
         }
-        genericSubstitutions.append(String(reflecting: type))
+        // Record the runtime-mangled type name so it can be resolved back to a
+        // concrete type via `_typeByName` on the receiving side.
+        //
+        // `_mangledTypeName` produces a stable, machine-resolvable representation
+        // (e.g. "SaySiG" for [Int]). `String(reflecting:)` produces a
+        // human-readable name (e.g. "Swift.Array<Swift.Int>") that `_typeByName`
+        // cannot resolve for generic, optional, collection, or user-defined types.
+        // Fall back to `_typeName` only when mangling is unavailable, matching
+        // swift-distributed-actors' ClusterInvocationEncoder.
+        genericSubstitutions.append(_mangledTypeName(type) ?? _typeName(type))
     }
 
     public mutating func recordArgument<Value>(_ argument: RemoteCallArgument<Value>) throws where Value: Codable {
@@ -57,7 +70,7 @@ public struct CodableInvocationEncoder: DistributedTargetInvocationEncoder {
             throw RuntimeError.invalidState("Cannot record argument after encoding")
         }
 
-        let data = try JSONEncoder().encode(argument.value)
+        let data = try jsonEncoder.encode(argument.value)
         arguments.append(data)
     }
 
@@ -69,7 +82,7 @@ public struct CodableInvocationEncoder: DistributedTargetInvocationEncoder {
             throw RuntimeError.invalidState("Cannot record argument after encoding")
         }
 
-        let data = try JSONEncoder().encode(value)
+        let data = try jsonEncoder.encode(value)
         arguments.append(data)
     }
 
@@ -118,15 +131,14 @@ public struct CodableInvocationEncoder: DistributedTargetInvocationEncoder {
             throw RuntimeError.invalidState("Target not recorded")
         }
 
-        // Encode arguments array as Data
-        let argumentsData = try JSONEncoder().encode(arguments)
-
+        // Arguments are already individually encoded; pass them through as a list
+        // so the bytes are not re-encoded when the envelope itself is serialized.
         let envelope = InvocationEnvelope(
             recipientID: recipientID,
             senderID: senderID,
             target: target,
             genericSubstitutions: genericSubstitutions,
-            arguments: argumentsData,
+            arguments: arguments,
             metadata: .init()
         )
 

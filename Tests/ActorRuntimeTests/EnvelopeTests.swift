@@ -11,13 +11,13 @@ struct EnvelopeTests {
             recipientID: "sensor-1",
             senderID: "client-1",
             target: "readTemperature",
-            arguments: Data([1, 2, 3])
+            arguments: [Data([1, 2, 3])]
         )
 
         #expect(envelope.recipientID == "sensor-1")
         #expect(envelope.senderID == "client-1")
         #expect(envelope.target == "readTemperature")
-        #expect(envelope.arguments == Data([1, 2, 3]))
+        #expect(envelope.arguments == [Data([1, 2, 3])])
         #expect(envelope.metadata.version == "1.0")
         #expect(!envelope.callID.isEmpty)
     }
@@ -29,7 +29,7 @@ struct EnvelopeTests {
             recipientID: "sensor-1",
             senderID: "client-1",
             target: "readTemperature",
-            arguments: Data([1, 2, 3]),
+            arguments: [Data([1, 2, 3])],
             metadata: .init(
                 timestamp: Date(timeIntervalSince1970: 1000),
                 version: "1.0",
@@ -166,7 +166,7 @@ struct EnvelopeTests {
             callID: "123",
             recipientID: "sensor-1",
             target: "read",
-            arguments: Data(),
+            arguments: [],
             metadata: metadata
         )
 
@@ -174,7 +174,7 @@ struct EnvelopeTests {
             callID: "123",
             recipientID: "sensor-1",
             target: "read",
-            arguments: Data(),
+            arguments: [],
             metadata: metadata
         )
 
@@ -182,7 +182,7 @@ struct EnvelopeTests {
             callID: "456",
             recipientID: "sensor-2",
             target: "write",
-            arguments: Data([1]),
+            arguments: [Data([1])],
             metadata: metadata
         )
 
@@ -294,7 +294,7 @@ struct EnvelopeTests {
             callID: "call-123",
             recipientID: "sensor-1",
             target: "readTemperature",
-            arguments: Data([1, 2, 3])
+            arguments: [Data([1, 2, 3])]
         )
 
         let envelope = Envelope.invocation(invocation)
@@ -332,7 +332,7 @@ struct EnvelopeTests {
             recipientID: "sensor-1",
             senderID: "client-1",
             target: "readTemperature",
-            arguments: Data([1, 2, 3]),
+            arguments: [Data([1, 2, 3])],
             metadata: .init(
                 timestamp: Date(timeIntervalSince1970: 1000),
                 version: "1.0",
@@ -398,7 +398,7 @@ struct EnvelopeTests {
             callID: "call-1",
             recipientID: "sensor-1",
             target: "read",
-            arguments: Data(),
+            arguments: [],
             metadata: .init(timestamp: timestamp)
         )
 
@@ -406,7 +406,7 @@ struct EnvelopeTests {
             callID: "call-1",
             recipientID: "sensor-1",
             target: "read",
-            arguments: Data(),
+            arguments: [],
             metadata: .init(timestamp: timestamp)
         )
 
@@ -414,7 +414,7 @@ struct EnvelopeTests {
             callID: "call-2",
             recipientID: "sensor-2",
             target: "write",
-            arguments: Data([1])
+            arguments: [Data([1])]
         )
 
         let envelope1 = Envelope.invocation(invocation1)

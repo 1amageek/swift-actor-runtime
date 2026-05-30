@@ -1,7 +1,7 @@
 # Swift Actor Runtime
 
 [![Test](https://github.com/1amageek/swift-actor-runtime/actions/workflows/test.yml/badge.svg)](https://github.com/1amageek/swift-actor-runtime/actions/workflows/test.yml)
-[![Swift 6.2+](https://img.shields.io/badge/Swift-6.2+-orange.svg)](https://swift.org)
+[![Swift 6.3+](https://img.shields.io/badge/Swift-6.3+-orange.svg)](https://swift.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Transport-agnostic primitives for implementing Swift Distributed Actor systems.
@@ -177,7 +177,7 @@ let envelope = InvocationEnvelope(
     senderID: "client-1",           // Optional sender identifier
     target: "readTemperature",
     genericSubstitutions: [],        // For generic methods
-    arguments: Data(),
+    arguments: [],                   // One Data blob per parameter
     metadata: .init(
         headers: ["trace-id": "abc123"]  // Custom headers for tracing
     )
@@ -272,7 +272,7 @@ public var messages: AsyncThrowingStream<Envelope, Error> {
 
 ## Platform Support
 
-- Swift 6.2+
+- Swift 6.3+
 - iOS 18.0+
 - macOS 15.0+
 - watchOS 11.0+

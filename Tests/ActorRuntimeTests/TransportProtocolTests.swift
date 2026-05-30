@@ -102,7 +102,7 @@ struct TransportProtocolTests {
             callID: "call-123",
             recipientID: "sensor-1",
             target: "readTemperature",
-            arguments: Data([1, 2, 3])
+            arguments: [Data([1, 2, 3])]
         )
 
         try await transport.send(.invocation(invocation))
@@ -149,7 +149,7 @@ struct TransportProtocolTests {
             callID: "call-1",
             recipientID: "actor-1",
             target: "method1",
-            arguments: Data()
+            arguments: []
         )
 
         let response = ResponseEnvelope(
@@ -186,7 +186,7 @@ struct TransportProtocolTests {
             callID: "call-1",
             recipientID: "actor-1",
             target: "method1",
-            arguments: Data()
+            arguments: []
         )
 
         let response = ResponseEnvelope(
@@ -239,7 +239,7 @@ struct TransportProtocolTests {
             callID: "call-1",
             recipientID: "actor-1",
             target: "method1",
-            arguments: Data()
+            arguments: []
         )
 
         await #expect(throws: RuntimeError.self) {
@@ -257,7 +257,7 @@ struct TransportProtocolTests {
             callID: "call-1",
             recipientID: "actor-1",
             target: "method1",
-            arguments: Data()
+            arguments: []
         )
 
         await #expect(throws: RuntimeError.self) {
@@ -277,7 +277,7 @@ struct TransportProtocolTests {
             recipientID: "sensor-1",
             senderID: "client-1",
             target: "readTemperature",
-            arguments: Data()
+            arguments: []
         )
         try await transport.send(.invocation(invocation))
 

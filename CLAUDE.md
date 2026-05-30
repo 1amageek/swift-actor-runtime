@@ -154,7 +154,7 @@ The Swift runtime's `executeDistributedTarget` handles:
 
 ## Platform Requirements
 
-- Swift 6.2+ (for `Synchronization.Mutex`)
+- Swift 6.3+ (toolchain requirement; `Synchronization.Mutex` itself is 6.0+)
 - iOS 18.0+, macOS 15.0+, watchOS 11.0+, tvOS 18.0+, visionOS 2.0+
 
 ## Known Transport Implementations
@@ -232,6 +232,7 @@ distributed actor GenericContainer<T: Codable & Sendable> {
 - All generic type parameters must conform to `Codable`
 - For actor type parameters, types must also conform to `Sendable`
 - Closures cannot be distributed method parameters (not `Codable`)
+- Generic substitution types must be resolvable by `_typeByName`; `private`/file-local and function-local types cannot be used as distributed generic parameters because their mangled names carry a file discriminator the runtime cannot resolve (a Swift runtime limitation shared with swift-distributed-actors)
 
 ## Testing Strategy
 

@@ -506,7 +506,7 @@ func testEnvelopeSerialization() throws {
     let original = InvocationEnvelope(
         recipientID: "actor-1",
         target: "testMethod",
-        arguments: Data()
+        arguments: []
     )
 
     let data = try JSONEncoder().encode(original)

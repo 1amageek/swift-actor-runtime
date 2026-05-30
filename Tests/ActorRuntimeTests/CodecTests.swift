@@ -1,6 +1,18 @@
 import Testing
 import Foundation
+import Distributed
 @testable import ActorRuntime
+
+/// File-scope fixture used to verify that user-defined types survive
+/// generic-substitution round-tripping.
+///
+/// Declared `internal` (not `private`): private/local types carry a file
+/// discriminator in their mangled name that `_typeByName` cannot resolve at
+/// runtime, which is a genuine limitation of the Swift runtime shared with
+/// swift-distributed-actors, not of this encoder.
+struct SubstitutionFixture: Codable, Sendable {
+    let value: Int
+}
 
 @Suite("Codec Tests")
 struct CodecTests {
@@ -112,13 +124,12 @@ struct CodecTests {
     func decodeSingleArgument() throws {
         // Create an envelope manually
         let arguments = [try JSONEncoder().encode(42)]
-        let argumentsData = try JSONEncoder().encode(arguments)
 
         let envelope = InvocationEnvelope(
             recipientID: "test-actor",
             senderID: nil,
             target: "testMethod",
-            arguments: argumentsData,
+            arguments: arguments,
             metadata: .init()
         )
 
@@ -135,13 +146,12 @@ struct CodecTests {
             try JSONEncoder().encode(42),
             try JSONEncoder().encode(3.14)
         ]
-        let argumentsData = try JSONEncoder().encode(arguments)
 
         let envelope = InvocationEnvelope(
             recipientID: "test-actor",
             senderID: nil,
             target: "testMethod",
-            arguments: argumentsData,
+            arguments: arguments,
             metadata: .init()
         )
 
@@ -171,13 +181,12 @@ struct CodecTests {
         )
 
         let arguments = [try JSONEncoder().encode(original)]
-        let argumentsData = try JSONEncoder().encode(arguments)
 
         let envelope = InvocationEnvelope(
             recipientID: "test-actor",
             senderID: nil,
             target: "testMethod",
-            arguments: argumentsData,
+            arguments: arguments,
             metadata: .init()
         )
 
@@ -190,13 +199,12 @@ struct CodecTests {
     @Test("Decode throws when no more arguments")
     func decodeThrowsWhenNoMoreArguments() throws {
         let arguments = [try JSONEncoder().encode(42)]
-        let argumentsData = try JSONEncoder().encode(arguments)
 
         let envelope = InvocationEnvelope(
             recipientID: "test-actor",
             senderID: nil,
             target: "testMethod",
-            arguments: argumentsData,
+            arguments: arguments,
             metadata: .init()
         )
 
@@ -211,13 +219,12 @@ struct CodecTests {
     @Test("Decode throws on type mismatch")
     func decodeThrowsOnTypeMismatch() throws {
         let arguments = [try JSONEncoder().encode("not a number")]
-        let argumentsData = try JSONEncoder().encode(arguments)
 
         let envelope = InvocationEnvelope(
             recipientID: "test-actor",
             senderID: nil,
             target: "testMethod",
-            arguments: argumentsData,
+            arguments: arguments,
             metadata: .init()
         )
 
@@ -238,13 +245,12 @@ struct CodecTests {
 
         // Manually create envelope (without target)
         let arguments = [try JSONEncoder().encode(42)]
-        let argumentsData = try JSONEncoder().encode(arguments)
 
         let envelope = InvocationEnvelope(
             recipientID: "test-actor",
             senderID: nil,
             target: "testMethod",
-            arguments: argumentsData,
+            arguments: arguments,
             metadata: .init()
         )
 
@@ -265,13 +271,12 @@ struct CodecTests {
             try JSONEncoder().encode(arg2),
             try JSONEncoder().encode(arg3)
         ]
-        let argumentsData = try JSONEncoder().encode(arguments)
 
         let envelope = InvocationEnvelope(
             recipientID: "test-actor",
             senderID: nil,
             target: "testMethod",
-            arguments: argumentsData,
+            arguments: arguments,
             metadata: .init()
         )
 
@@ -297,13 +302,12 @@ struct CodecTests {
             try JSONEncoder().encode(arg2),
             try JSONEncoder().encode(arg3)
         ]
-        let argumentsData = try JSONEncoder().encode(arguments)
 
         let envelope = InvocationEnvelope(
             recipientID: "test-actor",
             senderID: nil,
             target: "testMethod",
-            arguments: argumentsData,
+            arguments: arguments,
             metadata: .init()
         )
 
@@ -392,13 +396,12 @@ struct CodecTests {
     @Test("Decoder error includes method name when no arguments available")
     func decoderErrorIncludesMethodNameForNoArguments() throws {
         let arguments: [Data] = []
-        let argumentsData = try JSONEncoder().encode(arguments)
 
         let envelope = InvocationEnvelope(
             recipientID: "test-actor",
             senderID: nil,
             target: "testMethod",
-            arguments: argumentsData,
+            arguments: arguments,
             metadata: .init()
         )
 
@@ -421,13 +424,12 @@ struct CodecTests {
     @Test("Decoder error includes method name and type on type mismatch")
     func decoderErrorIncludesMethodNameAndTypeOnMismatch() throws {
         let arguments = [try JSONEncoder().encode("not a number")]
-        let argumentsData = try JSONEncoder().encode(arguments)
 
         let envelope = InvocationEnvelope(
             recipientID: "test-actor",
             senderID: nil,
             target: "readTemperature",
-            arguments: argumentsData,
+            arguments: arguments,
             metadata: .init()
         )
 
@@ -454,13 +456,12 @@ struct CodecTests {
             try JSONEncoder().encode("second"),
             try JSONEncoder().encode("third")
         ]
-        let argumentsData = try JSONEncoder().encode(arguments)
 
         let envelope = InvocationEnvelope(
             recipientID: "test-actor",
             senderID: nil,
             target: "multiArgMethod",
-            arguments: argumentsData,
+            arguments: arguments,
             metadata: .init()
         )
 
@@ -482,6 +483,93 @@ struct CodecTests {
             } else {
                 Issue.record("Expected serializationFailed error but got \(error)")
             }
+        }
+    }
+
+    // MARK: - Generic Substitution Round-trip Tests
+
+    /// Records a single generic substitution through the encoder, rebuilds an
+    /// envelope, and asserts the decoder resolves it back to the exact same type.
+    ///
+    /// This exercises the full encoder -> envelope -> decoder contract that the
+    /// Swift runtime relies on for generic distributed methods and actors.
+    private func assertGenericSubstitutionRoundTrips<T>(_ type: T.Type) throws {
+        var encoder = CodableInvocationEncoder()
+        try encoder.recordGenericSubstitution(type)
+        try encoder.doneRecording()
+        encoder.recordTarget(RemoteCallTarget("testTarget"))
+
+        let envelope = try encoder.makeInvocationEnvelope(recipientID: "test-actor")
+
+        var decoder = try CodableInvocationDecoder(envelope: envelope)
+        let resolved = try decoder.decodeGenericSubstitutions()
+
+        #expect(resolved.count == 1)
+        let resolvedType = try #require(resolved.first)
+        #expect(
+            ObjectIdentifier(resolvedType) == ObjectIdentifier(type),
+            "Expected \(type) but resolved \(resolvedType)"
+        )
+    }
+
+    @Test("Generic substitution round-trips for primitive types")
+    func genericSubstitutionPrimitives() throws {
+        try assertGenericSubstitutionRoundTrips(Int.self)
+        try assertGenericSubstitutionRoundTrips(String.self)
+        try assertGenericSubstitutionRoundTrips(Double.self)
+        try assertGenericSubstitutionRoundTrips(Bool.self)
+    }
+
+    @Test("Generic substitution round-trips for composite types")
+    func genericSubstitutionComposites() throws {
+        // These all fail with String(reflecting:)/_typeByName and only resolve
+        // correctly once mangled names are recorded.
+        try assertGenericSubstitutionRoundTrips([Int].self)
+        try assertGenericSubstitutionRoundTrips([String: Int].self)
+        try assertGenericSubstitutionRoundTrips(Optional<Int>.self)
+        try assertGenericSubstitutionRoundTrips([[String]].self)
+    }
+
+    @Test("Generic substitution round-trips for user-defined types")
+    func genericSubstitutionUserTypes() throws {
+        try assertGenericSubstitutionRoundTrips(SubstitutionFixture.self)
+        try assertGenericSubstitutionRoundTrips([SubstitutionFixture].self)
+        try assertGenericSubstitutionRoundTrips(Optional<SubstitutionFixture>.self)
+    }
+
+    @Test("Multiple generic substitutions preserve type and order")
+    func multipleGenericSubstitutions() throws {
+        var encoder = CodableInvocationEncoder()
+        try encoder.recordGenericSubstitution(Int.self)
+        try encoder.recordGenericSubstitution([String].self)
+        try encoder.recordGenericSubstitution(SubstitutionFixture.self)
+        try encoder.doneRecording()
+        encoder.recordTarget(RemoteCallTarget("testTarget"))
+
+        let envelope = try encoder.makeInvocationEnvelope(recipientID: "test-actor")
+
+        var decoder = try CodableInvocationDecoder(envelope: envelope)
+        let resolved = try decoder.decodeGenericSubstitutions()
+
+        #expect(resolved.count == 3)
+        #expect(ObjectIdentifier(resolved[0]) == ObjectIdentifier(Int.self))
+        #expect(ObjectIdentifier(resolved[1]) == ObjectIdentifier([String].self))
+        #expect(ObjectIdentifier(resolved[2]) == ObjectIdentifier(SubstitutionFixture.self))
+    }
+
+    @Test("Unresolvable mangled name surfaces a serialization error")
+    func unresolvableGenericSubstitutionThrows() throws {
+        // A bogus name must not silently resolve or be dropped.
+        let envelope = InvocationEnvelope(
+            recipientID: "test-actor",
+            target: "testTarget",
+            genericSubstitutions: ["this-is-not-a-valid-mangled-name"],
+            arguments: []
+        )
+
+        var decoder = try CodableInvocationDecoder(envelope: envelope)
+        #expect(throws: RuntimeError.self) {
+            _ = try decoder.decodeGenericSubstitutions()
         }
     }
 }

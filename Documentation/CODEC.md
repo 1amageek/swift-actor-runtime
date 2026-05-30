@@ -237,8 +237,11 @@ public mutating func recordGenericSubstitution<T>(_ type: T.Type) throws {
     guard state == .recording else {
         throw RuntimeError.invalidState("Cannot record generic substitution after encoding")
     }
-    // Store mangled type name for transmission
-    genericSubstitutions.append(String(reflecting: type))
+    // Store the runtime-mangled type name so it can be resolved back via
+    // _typeByName on the receiving side. String(reflecting:) is NOT usable here:
+    // it yields a human-readable name that _typeByName cannot resolve for
+    // generic/optional/collection/user-defined types.
+    genericSubstitutions.append(_mangledTypeName(type) ?? _typeName(type))
 }
 ```
 
@@ -257,15 +260,14 @@ public mutating func makeInvocationEnvelope(
         throw RuntimeError.invalidState("Target not recorded")
     }
 
-    // Encode all arguments as a single array
-    let argumentsData = try JSONEncoder().encode(arguments)
-
+    // Arguments are already individually encoded; pass the list through directly
+    // so the bytes are not re-encoded when the envelope is later serialized.
     let envelope = InvocationEnvelope(
         recipientID: recipientID,
         senderID: senderID,
         target: extractIdentifier(from: target),
         genericSubstitutions: genericSubstitutions,  // Include generic type info
-        arguments: argumentsData,
+        arguments: arguments,
         metadata: .init()
     )
 
@@ -319,8 +321,8 @@ public struct CodableInvocationDecoder: InvocationDecoder {
     private var currentIndex: Int = 0
 
     public init(envelope: InvocationEnvelope) throws {
-        // Decode the array of arguments
-        self.arguments = try JSONDecoder().decode([Data].self, from: envelope.arguments)
+        // Arguments are already a list of individually encoded blobs.
+        self.arguments = envelope.arguments
         self.genericSubstitutions = envelope.genericSubstitutions
     }
 

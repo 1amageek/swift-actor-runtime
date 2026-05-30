@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Generic substitution type resolution**: `CodableInvocationEncoder.recordGenericSubstitution`
+  now records the runtime-mangled type name via `_mangledTypeName` (falling back to
+  `_typeName`) instead of `String(reflecting:)`. The previous representation only
+  round-tripped for trivial top-level types (e.g. `Int`, `String`); generic, optional,
+  collection, and user-defined types produced names that `_typeByName` could not resolve,
+  causing `decodeGenericSubstitutions()` to throw on the receiving side. This matches
+  swift-distributed-actors' `ClusterInvocationEncoder` and makes generic distributed
+  methods and generic distributed actors work across a real transport.
+
+### Changed
+- Raised the minimum toolchain to **Swift 6.3** (`swift-tools-version: 6.3`).
+- **Breaking (wire/API)**: `InvocationEnvelope.arguments` is now `[Data]` (one encoded
+  blob per parameter) instead of a single `Data` holding a JSON-encoded `[Data]`. This
+  removes a redundant encode/decode and the extra base64 expansion that occurred when a
+  transport serialized the envelope. Transports that construct or inspect `arguments`
+  must pass a list of blobs. Mirrors how swift-distributed-actors carries arguments.
+- `CodableInvocationEncoder`/`CodableInvocationDecoder` now reuse a single
+  `JSONEncoder`/`JSONDecoder` per instance instead of allocating one per argument.
+
+### Added
+- Regression tests covering the full encoder → envelope → decoder generic-substitution
+  contract for primitive, composite, and user-defined types, multi-substitution ordering,
+  and unresolvable-name error reporting.
+
 ## [0.2.0] - 2025-01-05
 
 ### Added

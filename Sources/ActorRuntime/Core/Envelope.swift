@@ -47,7 +47,7 @@ public enum Envelope: Codable, Sendable, Hashable {
 /// let envelope = InvocationEnvelope(
 ///     recipientID: "sensor-1",
 ///     target: "readTemperature",
-///     arguments: Data()
+///     arguments: []
 /// )
 /// ```
 ///
@@ -67,8 +67,13 @@ public struct InvocationEnvelope: Codable, Sendable, Hashable {
     /// Generic type substitutions (mangled type names)
     public let genericSubstitutions: [String]
 
-    /// Serialized method arguments
-    public let arguments: Data
+    /// Serialized method arguments, one `Data` blob per parameter, in call order.
+    ///
+    /// Storing arguments as a list (rather than a single blob holding an encoded
+    /// `[Data]`) avoids encoding the argument bytes twice — once per argument and
+    /// again when the surrounding container is serialized — which would otherwise
+    /// base64-expand every argument an extra time.
+    public let arguments: [Data]
 
     /// Invocation metadata
     public let metadata: Metadata
@@ -112,7 +117,7 @@ public struct InvocationEnvelope: Codable, Sendable, Hashable {
     ///   - senderID: Optional identifier of the sending actor.
     ///   - target: The method identifier (typically a mangled Swift function name).
     ///   - genericSubstitutions: Mangled type names for generic type parameters.
-    ///   - arguments: Serialized method arguments.
+    ///   - arguments: Serialized method arguments, one `Data` blob per parameter.
     ///   - metadata: Associated metadata. Defaults to new metadata with current timestamp.
     public init(
         callID: String = UUID().uuidString,
@@ -120,7 +125,7 @@ public struct InvocationEnvelope: Codable, Sendable, Hashable {
         senderID: String? = nil,
         target: String,
         genericSubstitutions: [String] = [],
-        arguments: Data,
+        arguments: [Data],
         metadata: Metadata = Metadata()
     ) {
         self.callID = callID
