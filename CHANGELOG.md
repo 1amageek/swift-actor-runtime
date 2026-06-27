@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-28
+
 ### Changed
 - Prefer `FoundationEssentials` where the toolchain exposes it, with a
   `Foundation` fallback for host SDKs that do not make `FoundationEssentials`
@@ -108,6 +110,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Actions CI/CD for macOS and Linux
 - MIT License
 
+[0.6.0]: https://github.com/1amageek/swift-actor-runtime/releases/tag/0.6.0
 [0.5.0]: https://github.com/1amageek/swift-actor-runtime/releases/tag/0.5.0
 [0.2.0]: https://github.com/1amageek/swift-actor-runtime/releases/tag/0.2.0
 [0.1.0]: https://github.com/1amageek/swift-actor-runtime/releases/tag/0.1.0
