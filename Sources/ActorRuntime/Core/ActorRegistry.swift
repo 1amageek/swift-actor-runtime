@@ -1,4 +1,4 @@
-import Foundation
+#if canImport(Distributed)
 import Distributed
 import Synchronization
 
@@ -145,3 +145,4 @@ public final class ActorRegistry: Sendable {
         }
     }
 }
+#endif

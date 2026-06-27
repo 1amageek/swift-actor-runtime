@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Prefer `FoundationEssentials` where the toolchain exposes it, with a
+  `Foundation` fallback for host SDKs that do not make `FoundationEssentials`
+  directly importable.
+- Guard `Distributed`-dependent codec and registry APIs with
+  `canImport(Distributed)` so the source models compiler capabilities rather
+  than platform-named source variants.
+
+### Documentation
+- Added a platform support matrix: native Swift and standard WASM are supported
+  and tested; Embedded Swift WASM is explicitly unsupported with the current
+  Swift 6.3.1 SDK because `Codable`, `Foundation`/`FoundationEssentials`, and
+  `Distributed` are unavailable there.
+
 ## [0.5.0] - 2026-05-30
 
 ### Fixed

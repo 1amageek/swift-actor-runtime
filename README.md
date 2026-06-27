@@ -41,8 +41,34 @@ Transport-agnostic primitives for implementing Swift Distributed Actor systems.
 - ✅ **Standard Errors**: Serializable `RuntimeError` types
 - ✅ **Symmetric Transport Protocol**: Bidirectional communication where both peers can send invocations
 - ✅ **Error Propagation**: `AsyncThrowingStream` for transport-level error handling
-- ✅ **Zero Dependencies**: Pure Swift standard library
+- ✅ **No Package Dependencies**: Uses Swift standard library plus Swift toolchain modules (`Distributed`, `Synchronization`, and `FoundationEssentials` when available)
 - ✅ **Sendable-Safe**: Full Swift 6 concurrency support
+
+## Platform Support
+
+Swift Actor Runtime treats WebAssembly and Embedded Swift as compiler/runtime
+profiles, not as separate source families. The source keeps capability checks at
+module boundaries instead of introducing `Wasm` or `Embedded` API variants.
+
+```mermaid
+flowchart LR
+  A["ActorRuntime source"] --> B["native Swift"]
+  A --> C["standard WASM SDK"]
+  A --> D["Embedded Swift WASM SDK"]
+  B --> E["full distributed actor runtime"]
+  C --> E
+  D --> F["unsupported today"]
+```
+
+| Compiler profile | Status | Verified command | Notes |
+|---|---|---|---|
+| Native Swift | Supported | `xcrun swift build` | Full envelope, codec, registry, and transport APIs. Uses `Foundation` fallback when the host SDK does not expose `FoundationEssentials` as an importable module. |
+| Standard WASM | Supported | `swift build --swift-sdk swift-6.3.1-RELEASE_wasm` | Full envelope, codec, registry, and transport APIs. `FoundationEssentials`, `Distributed`, and `Synchronization` are available in this profile. |
+| Embedded Swift WASM | Not supported | `swift build --swift-sdk swift-6.3.1-RELEASE_wasm-embedded` | The current Embedded Swift SDK makes `Codable` unavailable and does not provide importable `FoundationEssentials`, `Foundation`, or `Distributed`. Supporting this profile would require a new standard-library-only wire format and a non-`DistributedActor` runtime contract. |
+
+`FoundationEssentials` is the preferred import path for browser/runtime builds.
+Source files use a capability import so Apple host SDKs that do not expose
+`FoundationEssentials` directly continue to build through `Foundation`.
 
 ## Installation
 

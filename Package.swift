@@ -20,7 +20,7 @@ let package = Package(
         ),
     ],
     dependencies: [
-        // No external dependencies - pure Swift standard library
+        // No external package dependencies.
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.

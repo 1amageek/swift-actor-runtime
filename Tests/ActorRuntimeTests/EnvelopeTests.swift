@@ -1,5 +1,9 @@
 import Testing
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 @testable import ActorRuntime
 
 @Suite("Envelope Tests")

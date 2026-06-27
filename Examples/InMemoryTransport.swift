@@ -1,5 +1,9 @@
 import Distributed
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 import ActorRuntime
 
 /// A simple in-memory transport for testing and demonstration purposes.

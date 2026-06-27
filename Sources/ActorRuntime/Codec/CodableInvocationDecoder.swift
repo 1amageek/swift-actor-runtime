@@ -1,5 +1,10 @@
+#if canImport(Distributed)
 import Distributed
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// A Codable-based implementation of `InvocationDecoder`.
 ///
@@ -77,7 +82,7 @@ public struct CodableInvocationDecoder: DistributedTargetInvocationDecoder {
             return try jsonDecoder.decode(Argument.self, from: data)
         } catch {
             throw RuntimeError.serializationFailed(
-                "Failed to decode argument at index \(currentIndex - 1) as \(Argument.self) for method '\(target)': \(error.localizedDescription)"
+                "Failed to decode argument at index \(currentIndex - 1) as \(Argument.self) for method '\(target)': \(String(describing: error))"
             )
         }
     }
@@ -94,3 +99,4 @@ public struct CodableInvocationDecoder: DistributedTargetInvocationDecoder {
         return nil
     }
 }
+#endif

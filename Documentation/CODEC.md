@@ -4,6 +4,11 @@
 
 The Codec system provides `InvocationEncoder` and `InvocationDecoder` implementations that enable distributed method calls with `Codable` arguments over any transport.
 
+This codec is available only when the toolchain can import `Distributed`. It is
+supported on native Swift targets and the standard Swift 6.3.1 WASM SDK. It is
+not supported on the Embedded Swift WASM SDK because Embedded Swift currently
+does not provide `Distributed` and marks `Codable` unavailable.
+
 ## Problem Statement
 
 When implementing a `DistributedActorSystem`, you must implement `remoteCall` and `remoteCallVoid` methods. These methods receive:

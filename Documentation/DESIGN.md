@@ -78,12 +78,46 @@ The runtime only handles:
 - Actor/method lookup
 - Serialization abstraction
 
-### 2. Zero Dependencies
+### 2. Package Dependencies
 
-- Pure Swift standard library
+- No package dependencies
+- Swift standard library plus Swift toolchain modules
+- `FoundationEssentials` is preferred when importable
+- Host SDKs that do not expose `FoundationEssentials` directly use `Foundation`
+  as the compatibility import
 - No external packages
 - Minimal API surface
 - Maximum compatibility
+
+## Compiler Profile Support
+
+Swift Actor Runtime treats WebAssembly and Embedded Swift as compiler/runtime
+profiles, not as source ownership boundaries.
+
+```mermaid
+flowchart LR
+    A["ActorRuntime source"] --> B["native Swift"]
+    A --> C["standard WASM SDK"]
+    A --> D["Embedded Swift WASM SDK"]
+    B --> E["full DistributedActor support"]
+    C --> E
+    D --> F["unsupported with current SDK"]
+```
+
+| Profile | Status | Reason |
+|---|---|---|
+| Native Swift | Supported | Full `Distributed`, `Codable`, `Foundation`/`FoundationEssentials`, and `Synchronization` support. |
+| Standard WASM | Supported | Swift 6.3.1 standard WASM SDK builds the full module, including codec and registry APIs. |
+| Embedded Swift WASM | Unsupported | Embedded Swift currently marks `Codable` unavailable and does not provide importable `Foundation`/`FoundationEssentials` or `Distributed`. |
+
+The current source uses capability checks such as `canImport(Distributed)` for
+distributed actor integration. That is not an Embedded-specific source split; it
+keeps the public boundary tied to available Swift modules.
+
+Supporting Embedded Swift in the future would require a separate runtime
+contract based on standard-library-only byte buffers and explicit generated
+dispatch, because the current distributed actor codec cannot exist without
+`Distributed` and `Codable`.
 
 ### 3. Thread Safety via Mutex
 

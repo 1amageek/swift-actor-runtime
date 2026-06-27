@@ -1,5 +1,10 @@
+#if canImport(Distributed)
 import Distributed
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// A Codable-based implementation of `DistributedTargetInvocationResultHandler`.
 ///
@@ -81,3 +86,4 @@ public struct CodableResultHandler: DistributedTargetInvocationResultHandler {
         try await sendResponse(envelope)
     }
 }
+#endif

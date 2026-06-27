@@ -1,5 +1,10 @@
+#if canImport(Distributed)
 import Distributed
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// A Codable-based implementation of `InvocationEncoder`.
 ///
@@ -185,3 +190,4 @@ extension RuntimeError {
         .serializationFailed(message)
     }
 }
+#endif

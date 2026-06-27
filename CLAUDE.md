@@ -109,7 +109,9 @@ swift-actor-runtime (this library)
 - **Symmetric Bidirectional Communication**: Both peers can send invocations and responses, enabling P2P and server-initiated calls
 - **Thread Safety via Mutex**: All registries use `Synchronization.Mutex` (Swift 6.0+) for Sendable conformance without `@unchecked`
 - **String IDs not UUIDs**: Actor/call identifiers are strings to allow custom ID schemes
-- **Zero Dependencies**: Pure Swift standard library for maximum compatibility
+- **No package dependencies**: Swift standard library plus toolchain modules
+  (`Distributed`, `Synchronization`, and `FoundationEssentials` when available)
+  for maximum compatibility
 
 ## RPC Data Flow
 
@@ -156,6 +158,11 @@ The Swift runtime's `executeDistributedTarget` handles:
 
 - Swift 6.3+ (toolchain requirement; `Synchronization.Mutex` itself is 6.0+)
 - iOS 18.0+, macOS 15.0+, watchOS 11.0+, tvOS 18.0+, visionOS 2.0+
+- Standard Swift WASM is supported and tested with
+  `swift-6.3.1-RELEASE_wasm`.
+- Embedded Swift WASM is not supported with the current Swift 6.3.1 SDK because
+  `Codable`, `Foundation`/`FoundationEssentials`, and `Distributed` are
+  unavailable there.
 
 ## Known Transport Implementations
 

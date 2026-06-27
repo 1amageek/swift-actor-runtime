@@ -373,7 +373,11 @@ distributed func myMethod() throws {
 ```swift
 import ActorRuntime
 import Distributed
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 class HTTPActorSystem: DistributedActorSystem {
     typealias ActorID = String
