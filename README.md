@@ -76,7 +76,7 @@ Source files use a capability import so Apple host SDKs that do not expose
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/1amageek/swift-actor-runtime", from: "0.6.0")
+    .package(url: "https://github.com/1amageek/swift-actor-runtime", from: "0.6.1")
 ]
 ```
 

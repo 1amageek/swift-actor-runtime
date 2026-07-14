@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-07-14
+
+### Fixed
+- Replaced `NSLock` with `Synchronization.Mutex` in the in-memory actor
+  implementations so Linux builds remain compatible with
+  `FoundationEssentials`.
+- Removed the related `@unchecked Sendable` conformances from the in-memory
+  actor implementations.
+
 ## [0.6.0] - 2026-06-28
 
 ### Changed
@@ -110,6 +119,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Actions CI/CD for macOS and Linux
 - MIT License
 
+[0.6.1]: https://github.com/1amageek/swift-actor-runtime/releases/tag/0.6.1
 [0.6.0]: https://github.com/1amageek/swift-actor-runtime/releases/tag/0.6.0
 [0.5.0]: https://github.com/1amageek/swift-actor-runtime/releases/tag/0.5.0
 [0.2.0]: https://github.com/1amageek/swift-actor-runtime/releases/tag/0.2.0
