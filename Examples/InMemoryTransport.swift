@@ -5,6 +5,7 @@ import FoundationEssentials
 import Foundation
 #endif
 import ActorRuntime
+import Synchronization
 
 /// A simple in-memory transport for testing and demonstration purposes.
 ///
@@ -41,7 +42,7 @@ import ActorRuntime
 /// let result2 = try await counter.increment() // 2
 /// let current = try await counter.getValue()  // 2
 /// ```
-public final class InMemoryActorSystem: DistributedActorSystem, @unchecked Sendable {
+public final class InMemoryActorSystem: DistributedActorSystem, Sendable {
     public typealias ActorID = String
     public typealias InvocationEncoder = CodableInvocationEncoder
     public typealias InvocationDecoder = CodableInvocationDecoder
@@ -49,19 +50,18 @@ public final class InMemoryActorSystem: DistributedActorSystem, @unchecked Senda
     public typealias ResultHandler = CodableResultHandler
 
     private let registry = ActorRegistry()
-    private var nextID: Int = 0
-    private let idLock = NSLock()
+    private let idState = Mutex(0)
 
     public init() {}
 
     // MARK: - ActorID Generation
 
     public func assignID<Act>(_ actorType: Act.Type) -> ActorID where Act: DistributedActor {
-        idLock.lock()
-        defer { idLock.unlock() }
-        let id = "\(actorType)-\(nextID)"
-        nextID += 1
-        return id
+        idState.withLock { nextID in
+            let id = "\(actorType)-\(nextID)"
+            nextID += 1
+            return id
+        }
     }
 
     // MARK: - Actor Lifecycle

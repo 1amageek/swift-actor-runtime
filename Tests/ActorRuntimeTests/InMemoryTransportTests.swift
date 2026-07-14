@@ -5,12 +5,13 @@ import FoundationEssentials
 import Foundation
 #endif
 import Distributed
+import Synchronization
 @testable import ActorRuntime
 
 // Include the InMemoryActorSystem implementation inline for testing
 #if canImport(Distributed)
 
-final class InMemoryActorSystem: DistributedActorSystem, @unchecked Sendable {
+final class InMemoryActorSystem: DistributedActorSystem, Sendable {
     typealias ActorID = String
     typealias InvocationEncoder = CodableInvocationEncoder
     typealias InvocationDecoder = CodableInvocationDecoder
@@ -18,17 +19,16 @@ final class InMemoryActorSystem: DistributedActorSystem, @unchecked Sendable {
     typealias ResultHandler = CodableResultHandler
 
     private let registry = ActorRegistry()
-    private var nextID: Int = 0
-    private let idLock = NSLock()
+    private let idState = Mutex(0)
 
     init() {}
 
     func assignID<Act>(_ actorType: Act.Type) -> ActorID where Act: DistributedActor {
-        idLock.lock()
-        defer { idLock.unlock() }
-        let id = "\(actorType)-\(nextID)"
-        nextID += 1
-        return id
+        idState.withLock { nextID in
+            let id = "\(actorType)-\(nextID)"
+            nextID += 1
+            return id
+        }
     }
 
     func actorReady<Act>(_ actor: Act) where Act: DistributedActor, Act.ID == ActorID {
